@@ -99,7 +99,7 @@ export function Welcome({
       <dl className="mt-auto grid grid-cols-1 gap-6 border-t border-rule pt-6 text-[0.78rem] leading-relaxed sm:grid-cols-3 sm:gap-8">
         <div>
           <dt className="font-medium tracking-[0.16em] text-muted uppercase">Role</dt>
-          <dd className="mt-2 text-ink/80">Girlfriend. Unpaid. High drama, low paperwork.</dd>
+          <dd className="mt-2 text-ink/80">Girlfriend. Unpaid. Low paperwork.</dd>
         </div>
         <div>
           <dt className="font-medium tracking-[0.16em] text-muted uppercase">Process</dt>
