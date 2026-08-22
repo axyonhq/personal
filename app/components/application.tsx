@@ -1,64 +1,152 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
-import { questions } from "@/app/lib/questions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { questions, type Answers, type FieldValue } from "@/app/lib/questions";
+import { canProceed, QuestionFields } from "@/app/components/fields";
+import {
+  CountdownScreen,
+  Prank,
+  Rejected,
+  Shortlist,
+  Welcome,
+} from "@/app/components/screens";
 
-type Step = "welcome" | number | "complete";
+type Step =
+  | "welcome"
+  | number
+  | "assessing"
+  | "shortlist"
+  | "unlocking"
+  | "prank"
+  | "rejected";
 
 export function Application() {
   const [step, setStep] = useState<Step>("welcome");
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [answers, setAnswers] = useState<Answers>({});
   const [animKey, setAnimKey] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const question = typeof step === "number" ? questions[step] : null;
+  const total = questions.length;
+  const progress = useMemo(() => {
+    if (step === "welcome") return 0;
+    if (typeof step === "number") return ((step + 1) / (total + 1)) * 100;
+    return 100;
+  }, [step, total]);
+
   const progressLabel = useMemo(() => {
     if (step === "welcome") return "Intake";
-    if (step === "complete") return "Submitted";
+    if (step === "rejected") return "Closed";
+    if (step === "assessing") return "Scoring";
+    if (step === "shortlist" || step === "unlocking" || step === "prank") {
+      return "Shortlist";
+    }
     return `Question ${String(step + 1).padStart(2, "0")}`;
   }, [step]);
 
   function go(next: Step) {
     setStep(next);
     setAnimKey((n) => n + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  function setAnswer(id: string, value: FieldValue) {
+    setAnswers((prev) => ({ ...prev, [id]: value }));
+  }
+
+  function startSoundtrack() {
+    const el = audioRef.current;
+    if (!el) return;
+    el.volume = 0;
+    el.currentTime = 0;
+    const play = el.play();
+    if (play) play.catch(() => {});
+  }
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (step === "prank") {
+      el.currentTime = 0;
+      el.volume = 1;
+      if (el.paused) {
+        const play = el.play();
+        if (play) play.catch(() => {});
+      }
+      return;
+    }
+    if (step !== "unlocking") {
+      el.pause();
+      el.volume = 1;
+    }
+  }, [step]);
 
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-[46rem] flex-col border-rule px-6 py-7 sm:border-x sm:px-12 sm:py-10">
-      <header className="flex items-end justify-between gap-6 border-b border-rule pb-4">
-        <div>
-          <p className="text-[0.64rem] font-medium tracking-[0.22em] text-muted uppercase">
-            Confidential
-          </p>
-          <p className="mt-1 font-serif text-[1.35rem] leading-none tracking-tight">
-            Girlfriend search
+      <audio ref={audioRef} src="/nick.mp3" preload="auto" />
+      <header>
+        <div className="flex items-end justify-between gap-6 pb-4">
+          <div>
+            <p className="text-[0.64rem] font-medium tracking-[0.22em] text-muted uppercase">
+              Confidential
+            </p>
+            <p className="mt-1 font-serif text-[1.35rem] leading-none tracking-tight">
+              Girlfriend search
+            </p>
+          </div>
+          <p className="pb-0.5 text-[0.64rem] font-medium tracking-[0.18em] text-muted uppercase">
+            {progressLabel}
+            {typeof step === "number" ? ` · ${String(total).padStart(2, "0")}` : ""}
           </p>
         </div>
-        <p className="pb-0.5 text-[0.64rem] font-medium tracking-[0.18em] text-muted uppercase">
-          {progressLabel}
-        </p>
+        <div className="progress" aria-hidden="true">
+          <span style={{ width: `${progress}%` }} />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col">
         <div key={animKey} className="step-enter flex flex-1 flex-col">
           {step === "welcome" ? (
-            <Welcome onStart={() => go(0)} />
-          ) : step === "complete" ? (
-            <Complete />
+            <Welcome
+              name={name}
+              age={age}
+              onName={setName}
+              onAge={setAge}
+              onStart={() => go(0)}
+            />
+          ) : step === "assessing" ? (
+            <CountdownScreen
+              kicker="Assessing your application"
+              onDone={() => go("shortlist")}
+            />
+          ) : step === "shortlist" ? (
+            <Shortlist
+              name={name}
+              onReveal={() => {
+                startSoundtrack();
+                go("unlocking");
+              }}
+            />
+          ) : step === "unlocking" ? (
+            <CountdownScreen kicker="Loading" onDone={() => go("prank")} />
+          ) : step === "prank" ? (
+            <Prank />
+          ) : step === "rejected" ? (
+            <Rejected />
           ) : question ? (
             <QuestionStep
               index={step}
-              total={questions.length}
-              prompt={question.prompt}
-              hint={question.hint}
-              placeholder={question.placeholder}
-              value={answers[question.id] ?? ""}
-              onChange={(value) =>
-                setAnswers((prev) => ({ ...prev, [question.id]: value }))
-              }
+              total={total}
+              question={question}
+              value={answers[question.id]}
+              onChange={(value) => setAnswer(question.id, value)}
               onBack={() => go(step === 0 ? "welcome" : step - 1)}
               onNext={() =>
-                go(step + 1 < questions.length ? step + 1 : "complete")
+                go(step + 1 < total ? step + 1 : "assessing")
               }
+              onReject={() => go("rejected")}
             />
           ) : null}
         </div>
@@ -67,160 +155,68 @@ export function Application() {
   );
 }
 
-function Welcome({ onStart }: { onStart: () => void }) {
-  return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col justify-center py-12 sm:py-16">
-        <p className="text-[0.68rem] font-medium tracking-[0.22em] text-blood uppercase">
-          Pre-qualification · Cycle 2026
-        </p>
-        <h1 className="mt-5 font-serif text-[2.7rem] leading-[0.95] tracking-[-0.03em] text-pretty sm:text-[4.15rem]">
-          Welcome.
-        </h1>
-        <div className="mt-8 max-w-[34rem] space-y-5 text-[1.05rem] leading-relaxed text-ink/80 sm:text-[1.12rem]">
-          <p>
-            Thank you for your interest in pre-qualification for the{" "}
-            <em className="font-serif text-[1.18em] text-ink">
-              next girlfriend position
-            </em>
-            .
-          </p>
-          <p>
-            You will be asked a series of questions — one at a time, like a
-            civilized person — to determine whether you will be shortlisted and
-            permitted to move forward in the application process toward{" "}
-            <em className="font-serif text-[1.18em] text-ink">Date Number One</em>
-            .
-          </p>
-          <p className="text-[0.98rem] text-muted">
-            This is not a meet-cute. This is a hiring process. There is no
-            salary, no dental, and absolutely no “sorry I&apos;m just so bad at
-            texting.” There is a shortlist. You are not on it yet.
-          </p>
-        </div>
-
-        <div className="mt-10">
-          <button type="button" className="btn" onClick={onStart}>
-            Start application
-            <span className="arrow" aria-hidden="true">
-              →
-            </span>
-          </button>
-        </div>
-      </div>
-
-      <dl className="mt-auto grid grid-cols-1 gap-6 border-t border-rule pt-6 text-[0.78rem] leading-relaxed sm:grid-cols-3 sm:gap-8">
-        <div>
-          <dt className="font-medium tracking-[0.16em] text-muted uppercase">
-            Role
-          </dt>
-          <dd className="mt-2 text-ink/80">Girlfriend. Unpaid. High drama, low paperwork.</dd>
-        </div>
-        <div>
-          <dt className="font-medium tracking-[0.16em] text-muted uppercase">
-            Process
-          </dt>
-          <dd className="mt-2 text-ink/80">One question per page. No take-backs. No “haha wait.”</dd>
-        </div>
-        <div>
-          <dt className="font-medium tracking-[0.16em] text-muted uppercase">
-            Prize
-          </dt>
-          <dd className="mt-2 text-ink/80">Date Number One. Or silence, which is also feedback.</dd>
-        </div>
-      </dl>
-    </div>
-  );
-}
-
 function QuestionStep({
   index,
   total,
-  prompt,
-  hint,
-  placeholder,
+  question,
   value,
   onChange,
   onBack,
   onNext,
+  onReject,
 }: {
   index: number;
   total: number;
-  prompt: string;
-  hint: string;
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
+  question: (typeof questions)[number];
+  value: FieldValue | undefined;
+  onChange: (value: FieldValue) => void;
   onBack: () => void;
   onNext: () => void;
+  onReject: () => void;
 }) {
-  const canContinue = value.trim().length > 0;
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canContinue) {
-      event.preventDefault();
-      onNext();
-    }
-  }
+  const last = index === total - 1;
+  const ready = canProceed(question, value);
+  const longPrompt = question.prompt.length > 90;
 
   return (
-    <div className="flex flex-1 flex-col py-12 sm:py-16">
+    <div className="flex flex-1 flex-col py-10 sm:py-12">
       <p className="text-[0.68rem] font-medium tracking-[0.22em] text-muted uppercase">
         {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
       </p>
-      <h1 className="mt-5 max-w-[22ch] font-serif text-[2.15rem] leading-[1.08] tracking-[-0.03em] text-pretty sm:text-[3.05rem]">
-        {prompt}
+      <h1
+        className={`mt-5 font-serif leading-[1.08] tracking-[-0.03em] text-pretty ${
+          longPrompt
+            ? "max-w-[28ch] text-[1.7rem] sm:text-[2.25rem]"
+            : "max-w-[22ch] text-[2.05rem] sm:text-[2.9rem]"
+        }`}
+      >
+        {question.prompt}
       </h1>
-      <p className="mt-4 max-w-[36rem] text-[0.98rem] leading-relaxed text-muted">
-        {hint}
-      </p>
+      {question.hint ? (
+        <p className="mt-4 max-w-[36rem] text-[0.98rem] leading-relaxed text-muted">
+          {question.hint}
+        </p>
+      ) : null}
 
-      <label className="mt-10 block">
-        <span className="sr-only">{prompt}</span>
-        <textarea
-          className="field"
+      <div className="mt-9">
+        <QuestionFields
+          question={question}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          autoFocus
-          rows={5}
+          onChange={onChange}
+          onReject={onReject}
         />
-      </label>
+      </div>
 
       <div className="mt-10 flex flex-wrap items-center gap-3">
         <button type="button" className="btn btn-ghost" onClick={onBack}>
           Back
         </button>
-        <button type="button" className="btn" onClick={onNext} disabled={!canContinue}>
-          Next
+        <button type="button" className="btn" onClick={onNext} disabled={!ready}>
+          {last ? "Submit" : "Next"}
           <span className="arrow" aria-hidden="true">
             →
           </span>
         </button>
-      </div>
-    </div>
-  );
-}
-
-function Complete() {
-  return (
-    <div className="flex flex-1 flex-col justify-center py-12 sm:py-16">
-      <p className="text-[0.68rem] font-medium tracking-[0.22em] text-blood uppercase">
-        Application received
-      </p>
-      <h1 className="mt-5 max-w-[12ch] font-serif text-[2.7rem] leading-[0.95] tracking-[-0.03em] sm:text-[4.15rem]">
-        Sit tight.
-      </h1>
-      <div className="mt-8 max-w-[34rem] space-y-5 text-[1.05rem] leading-relaxed text-ink/80 sm:text-[1.12rem]">
-        <p>
-          Your answers are in. If you are shortlisted, you will be contacted
-          regarding Date Number One.
-        </p>
-        <p className="text-[0.98rem] text-muted">
-          If you are not, you will hear nothing, which is also an answer. Do not
-          follow up. Following up is a personality, and not a good one.
-        </p>
       </div>
     </div>
   );
