@@ -10,6 +10,7 @@ import {
   Shortlist,
   Welcome,
 } from "@/app/components/screens";
+import type { SubmissionStatus } from "@/app/lib/submission";
 
 type Step =
   | "welcome"
@@ -54,6 +55,29 @@ export function Application() {
 
   function setAnswer(id: string, value: FieldValue) {
     setAnswers((prev) => ({ ...prev, [id]: value }));
+  }
+
+  async function notify(status: SubmissionStatus, latest: Answers = answers) {
+    try {
+      await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          age,
+          status,
+          answers: latest,
+        }),
+        keepalive: true,
+      });
+    } catch {
+      // The applicant still proceeds. Notification is best-effort.
+    }
+  }
+
+  async function finish(status: SubmissionStatus, next: Step, latest?: Answers) {
+    await notify(status, latest ?? answers);
+    go(next);
   }
 
   function startSoundtrack() {
@@ -143,10 +167,17 @@ export function Application() {
               value={answers[question.id]}
               onChange={(value) => setAnswer(question.id, value)}
               onBack={() => go(step === 0 ? "welcome" : step - 1)}
-              onNext={() =>
-                go(step + 1 < total ? step + 1 : "assessing")
-              }
-              onReject={() => go("rejected")}
+              onNext={() => {
+                if (step + 1 < total) go(step + 1);
+                else void finish("submitted", "assessing");
+              }}
+              onReject={() => {
+                const latest = {
+                  ...answers,
+                  ...(question ? { [question.id]: "no" } : {}),
+                };
+                void finish("rejected", "rejected", latest);
+              }}
             />
           ) : null}
         </div>
@@ -171,8 +202,8 @@ function QuestionStep({
   value: FieldValue | undefined;
   onChange: (value: FieldValue) => void;
   onBack: () => void;
-  onNext: () => void;
-  onReject: () => void;
+  onNext: () => void | Promise<void>;
+  onReject: () => void | Promise<void>;
 }) {
   const last = index === total - 1;
   const ready = canProceed(question, value);
