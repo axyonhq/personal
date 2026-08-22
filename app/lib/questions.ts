@@ -96,6 +96,14 @@ export const questions: Question[] = [
     max: 5,
   },
   {
+    id: "flaws",
+    type: "textarea",
+    prompt:
+      "If you consider yourself a self-aware person, what are your biggest shortcomings and potential flaws when it comes to building a healthy relationship?",
+    hint: "We’ve all got flaws. If you have the self-awareness to list yours, paradoxically, that’s actually extra points.",
+    placeholder: "The unflattering version. That’s the one that scores.",
+  },
+  {
     id: "flowers",
     type: "text",
     prompt: "What are your favourite type of flowers?",
@@ -117,6 +125,17 @@ export const questions: Question[] = [
     placeholder: "Cuisine, dish, or a very specific craving.",
   },
   {
+    id: "surprise-dates",
+    type: "yesno",
+    prompt:
+      "Are you okay with going on incredibly thoughtful, well-planned, exciting, meticulous dates without knowing what they are until you get there, because Nick has planned it all out like an absolute G?",
+    hint: "Simple yes or no.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
+    ],
+  },
+  {
     id: "humour",
     type: "multi",
     prompt: "What type of humour are you willing to engage in with Nick if you are successful?",
@@ -128,6 +147,21 @@ export const questions: Question[] = [
       { id: "retards", letter: "D", label: "Towards retards" },
       { id: "all", letter: "E", label: "All of the above" },
       { id: "none", letter: "F", label: "None of the above" },
+    ],
+  },
+  {
+    id: "psychoanalyze",
+    type: "single",
+    prompt:
+      "How do you feel about Nick psychoanalyzing absolutely everyone you guys ever meet — including you — and voicing his opinions?",
+    hint: "He will not stop. This is a lifestyle.",
+    options: [
+      { id: "piss-off", letter: "A", label: "He’s going to piss me off" },
+      { id: "hate", letter: "B", label: "I hate it" },
+      { id: "love", letter: "C", label: "I love it" },
+      { id: "pretend", letter: "D", label: "I pretend to hate it, but I love it" },
+      { id: "hot-until-me", letter: "E", label: "It’s hot until it’s me" },
+      { id: "keep-going", letter: "F", label: "Do it again. Harder. Diagnose my father." },
     ],
   },
   {
@@ -175,12 +209,30 @@ export const questions: Question[] = [
     ],
   },
   {
+    id: "compliments",
+    type: "yesno",
+    prompt:
+      "Are you okay with being called pretty, beautiful, gorgeous, mesmerizing, enchanting, energizing, and soft on a daily basis?",
+    hint: "Nick likes to make those close to him feel loved.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
+    ],
+  },
+  {
     id: "children",
     type: "number",
     prompt: "How many children would you like to have with Nick if successful?",
     hint: "A number. Not a vibe. Not “however many he wants” unless that is actually the number.",
     min: 0,
     max: 20,
+  },
+  {
+    id: "queen",
+    type: "textarea",
+    prompt: "Do you have what it takes to be a queen?",
+    hint: "Nick is not just trying to build financial freedom. He’s trying to build a legacy that will carry for generations to come. A queen role is a very, very important role. The king and the queen can be the most powerful duo on the face of the planet. Please describe why you would be fit for this position.",
+    placeholder: "Make the case. This is not a vibe check. This is a throne.",
   },
   {
     id: "roleplay-street",
@@ -203,6 +255,14 @@ export const questions: Question[] = [
     placeholder: "Verbatim, please.",
   },
   {
+    id: "disagreement",
+    type: "textarea",
+    prompt:
+      "You and Nick disagree on something, and either something he said upsets you or something he did upsets you. How do you handle this?",
+    hint: "Case study. Show the work, not the speech you’d give in therapy.",
+    placeholder: "Walk through the actual moment.",
+  },
+  {
     id: "driver",
     type: "driver",
     prompt: "Given you are a woman, are you a good driver?",
@@ -219,11 +279,32 @@ export const questions: Question[] = [
     ],
   },
   {
+    id: "passion",
+    type: "yesno",
+    prompt: "Are you okay being loved by a man with extreme passion and depth?",
+    hint: "Nick loves with his whole heart. He won’t be obsessed with you — he’s obsessed with his mission. However, he loves fully, real, and with depth.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
+    ],
+  },
+  {
     id: "support",
     type: "textarea",
     prompt: "How can Nick best support you to make you as happy as possible, make you feel as loved as possible, and make you the best version of yourself possible?",
     hint: "This is the grown-up question. Try not to waste it.",
     placeholder: "What actually works on you.",
+  },
+  {
+    id: "obsessed",
+    type: "yesno",
+    prompt:
+      "Will you be obsessed with Nick and making his life easier for him in whatever way that you can?",
+    hint: "You guys have different roles. His role is to make you feel loved and safe. Your role is to make him feel respected and admired.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
+    ],
   },
   {
     id: "orgasm",
@@ -251,6 +332,16 @@ export const questions: Question[] = [
       { id: "5-10", letter: "B", label: "5–10" },
       { id: "10+", letter: "C", label: "10+" },
       { id: "0", letter: "D", label: "0" },
+    ],
+  },
+  {
+    id: "no-chaos",
+    type: "yesno",
+    prompt: "Do you promise to never, ever bring chaos, drama, or yelling into Nick’s life?",
+    hint: "The first sign of this, you will be instantly blocked. Nick protects his peace just as much as he protects his loved ones. It is pivotal that he maintains his peace, because that is where he builds the best possible life and existence.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
     ],
   },
   {
