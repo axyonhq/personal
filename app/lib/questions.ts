@@ -279,6 +279,16 @@ export const questions: Question[] = [
     ],
   },
   {
+    id: "daddy",
+    type: "yesno",
+    prompt: "Do you promise to refer to Nick as Daddy at least once per day?",
+    hint: "Once is the floor. Nick is keeping a tally.",
+    options: [
+      { id: "yes", label: "Yes" },
+      { id: "no", label: "No" },
+    ],
+  },
+  {
     id: "passion",
     type: "yesno",
     prompt: "Are you okay being loved by a man with extreme passion and depth?",
