@@ -108,6 +108,53 @@ describe("mergeGeo", () => {
     assert.equal(merged.city, "Austin");
     assert.equal(merged.precision, "city");
     assert.ok(merged.place?.includes("Austin"));
+    assert.ok(Math.abs((merged.latitude ?? 0) - 30.26) < 0.02);
+    assert.ok(merged.alsoReported?.some((item) => item.includes("Houston")));
+  });
+
+  it("does not mix one city's name with another city's coordinates", () => {
+    const merged = mergeGeo([
+      {
+        city: "Ashburn",
+        region: "VA",
+        countryCode: "US",
+        latitude: 39.03,
+        longitude: -77.5,
+        sources: ["edge-headers"],
+      },
+      {
+        city: "San Jose",
+        region: "California",
+        regionCode: "CA",
+        postal: "95113",
+        country: "United States",
+        countryCode: "US",
+        latitude: 37.3361663,
+        longitude: -121.8905913,
+        sources: ["ipwho.is"],
+      },
+      {
+        city: "Ashburn",
+        region: "Virginia",
+        regionCode: "VA",
+        postal: "20149",
+        country: "United States",
+        countryCode: "US",
+        latitude: 39.03,
+        longitude: -77.5,
+        hosting: true,
+        sources: ["ip-api.com"],
+      },
+      { latitude: 37.751, longitude: -97.822, country: "United States", sources: ["geojs.io"] },
+    ]);
+    assert.equal(merged.city, "Ashburn");
+    assert.equal(merged.region, "Virginia");
+    assert.equal(merged.regionCode, "VA");
+    assert.equal(merged.postal, "20149");
+    assert.ok(Math.abs((merged.latitude ?? 0) - 39.03) < 0.05);
+    assert.ok(Math.abs((merged.longitude ?? 0) + 77.5) < 0.05);
+    assert.ok(merged.alsoReported?.some((item) => item.includes("San Jose")));
+    assert.ok(!merged.place?.includes("95113"));
   });
 });
 

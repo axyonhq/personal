@@ -39,6 +39,7 @@ export type GeoFix = {
   vpn?: boolean;
   tor?: boolean;
   sources: string[];
+  alsoReported?: string[];
 };
 
 export type PlatformGeo = {
@@ -375,8 +376,97 @@ function majorityString(values: Array<string | undefined>): string | undefined {
     if (current) current.count += 1;
     else counts.set(key, { value, count: 1 });
   }
-  const ranked = [...counts.values()].sort((a, b) => b.count - a.count);
+  const ranked = [...counts.values()].sort(
+    (a, b) => b.count - a.count || b.value.length - a.value.length,
+  );
   return ranked[0]?.value;
+}
+
+function regionFields(items: Partial<GeoFix>[]): { region?: string; regionCode?: string } {
+  const names = items
+    .map((item) => item.region)
+    .filter((value): value is string => typeof value === "string" && value.length > 2);
+  const codes = items
+    .map((item) => {
+      if (item.regionCode) return item.regionCode;
+      if (item.region && /^[A-Z]{2}$/i.test(item.region)) return item.region;
+      return undefined;
+    })
+    .filter((value): value is string => Boolean(value));
+  return {
+    region: majorityString(names) ?? majorityString(items.map((item) => item.region)),
+    regionCode: majorityString(codes)?.toUpperCase(),
+  };
+}
+
+function sourceLabel(item: Partial<GeoFix>): string {
+  return (item.sources ?? []).join("/") || "unknown";
+}
+
+function describeSource(item: Partial<GeoFix>): string {
+  const place = [item.city, item.region || item.regionCode, item.postal].filter(Boolean).join(", ");
+  return place ? `${place} (${sourceLabel(item)})` : sourceLabel(item);
+}
+
+function clusterByCity(sources: Partial<GeoFix>[]): {
+  winner: Partial<GeoFix>[];
+  alsoReported: string[];
+} {
+  const clusters = new Map<string, Partial<GeoFix>[]>();
+  const noCity: Partial<GeoFix>[] = [];
+  for (const source of sources) {
+    const key = source.city?.trim().toLowerCase();
+    if (!key) {
+      noCity.push(source);
+      continue;
+    }
+    const list = clusters.get(key) ?? [];
+    list.push(source);
+    clusters.set(key, list);
+  }
+
+  const ranked = [...clusters.entries()].sort((a, b) => {
+    if (b[1].length !== a[1].length) return b[1].length - a[1].length;
+    const richness = (items: Partial<GeoFix>[]) =>
+      items.reduce(
+        (score, item) =>
+          score +
+          (item.postal ? 2 : 0) +
+          (item.region ? 1 : 0) +
+          (item.latitude != null && item.longitude != null ? 1 : 0),
+        0,
+      );
+    return richness(b[1]) - richness(a[1]);
+  });
+
+  const winner = ranked[0]?.[1] ?? sources;
+  const alsoReported = ranked.slice(1).flatMap(([, items]) => items.map(describeSource));
+  return { winner, alsoReported };
+}
+
+function clusteredCoords(items: Partial<GeoFix>[], extras: Partial<GeoFix>[] = []): {
+  latitude?: number;
+  longitude?: number;
+} {
+  const primary = items.filter(
+    (item): item is Partial<GeoFix> & { latitude: number; longitude: number } =>
+      item.latitude != null && item.longitude != null,
+  );
+  if (primary.length === 0) return {};
+  const seedLat = median(primary.map((item) => item.latitude));
+  const seedLon = median(primary.map((item) => item.longitude));
+  if (seedLat == null || seedLon == null) return {};
+
+  const extrasClose = extras.filter(
+    (item) =>
+      item.latitude != null &&
+      item.longitude != null &&
+      Math.hypot(item.latitude - seedLat, item.longitude - seedLon) < 1.25,
+  );
+  const pool = [...primary, ...extrasClose];
+  const lat = median(pool.map((item) => item.latitude!).filter((value) => value != null));
+  const lon = median(pool.map((item) => item.longitude!).filter((value) => value != null));
+  return { latitude: lat, longitude: lon };
 }
 
 function median(values: number[]): number | undefined {
@@ -430,28 +520,33 @@ export function mergeGeo(
     ...(reverse?.sources ?? []),
     ...(gps ? ["browser-gps"] : []),
   ];
+  const { winner, alsoReported } = clusterByCity(sources);
+  const noCity = sources.filter((item) => !item.city);
+  const regions = regionFields(winner);
+  const coords = clusteredCoords(winner, noCity);
 
   const base: GeoFix = {
     source: gps ? "gps" : "ip",
     precision: "unknown",
-    city: prefer(reverse?.city, majorityString(sources.map((item) => item.city))),
-    region: prefer(reverse?.region, majorityString(sources.map((item) => item.region))),
-    regionCode: prefer(reverse?.regionCode, majorityString(sources.map((item) => item.regionCode))),
-    postal: prefer(reverse?.postal, majorityString(sources.map((item) => item.postal))),
-    country: prefer(reverse?.country, majorityString(sources.map((item) => item.country))),
+    city: prefer(reverse?.city, majorityString(winner.map((item) => item.city))),
+    region: prefer(reverse?.region, regions.region),
+    regionCode: prefer(reverse?.regionCode, regions.regionCode),
+    postal: prefer(reverse?.postal, majorityString(winner.map((item) => item.postal))),
+    country: prefer(reverse?.country, majorityString(winner.map((item) => item.country))),
     countryCode: prefer(
       reverse?.countryCode,
-      majorityString(sources.map((item) => item.countryCode)),
+      majorityString(winner.map((item) => item.countryCode)),
     ),
-    district: prefer(reverse?.district, majorityString(sources.map((item) => item.district))),
+    district: prefer(reverse?.district, majorityString(winner.map((item) => item.district))),
     neighbourhood: prefer(
       reverse?.neighbourhood,
-      majorityString(sources.map((item) => item.neighbourhood)),
+      majorityString(winner.map((item) => item.neighbourhood)),
     ),
     houseNumber: reverse?.houseNumber,
     road: reverse?.road,
     plusCode: reverse?.plusCode,
     timezone: prefer(
+      majorityString(winner.map((item) => item.timezone)),
       majorityString(sources.map((item) => item.timezone)),
     ),
     isp: prefer(...sources.map((item) => item.isp)),
@@ -463,6 +558,7 @@ export function mergeGeo(
     vpn: sources.some((item) => item.vpn) || undefined,
     tor: sources.some((item) => item.tor) || undefined,
     sources: [...new Set(sourceNames)],
+    alsoReported: alsoReported.length ? alsoReported : undefined,
   };
 
   if (gps) {
@@ -471,13 +567,10 @@ export function mergeGeo(
     base.accuracyMeters = gps.accuracy;
     if (gps.altitude != null) base.altitude = gps.altitude;
     base.place = reverse?.place ?? buildPlace(base);
+    base.alsoReported = undefined;
   } else {
-    base.latitude = median(
-      sources.map((item) => item.latitude).filter((value): value is number => value != null),
-    );
-    base.longitude = median(
-      sources.map((item) => item.longitude).filter((value): value is number => value != null),
-    );
+    base.latitude = coords.latitude;
+    base.longitude = coords.longitude;
     base.place = buildPlace(base);
   }
 

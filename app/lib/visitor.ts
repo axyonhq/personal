@@ -217,6 +217,7 @@ export function formatVisitor(visitor: Visitor): string {
   if (client?.referrer) lines.push(`Referrer: ${client.referrer}`);
   else lines.push("Referrer: (direct / unknown)");
   if (client?.href) lines.push(`URL: ${client.href}`);
+  if (geo.alsoReported?.length) lines.push(`Also reported: ${geo.alsoReported.join("; ")}`);
   if (geo.sources.length) lines.push(`Sources: ${geo.sources.join(", ")}`);
   lines.push(`When: ${visitor.when}`);
   return lines.join("\n");
