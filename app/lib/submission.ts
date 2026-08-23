@@ -1,4 +1,5 @@
 import { questions, type Answers, type FieldValue, type Question } from "@/app/lib/questions";
+import { formatVisitor, shortLocation, type Visitor } from "@/app/lib/visitor";
 
 export type SubmissionStatus = "submitted" | "rejected";
 
@@ -52,13 +53,17 @@ function labelFor(question: Question, id: string): string {
   return id;
 }
 
-export function formatSubmission(input: Submission): {
+export function formatSubmission(
+  input: Submission,
+  visitor?: Visitor,
+): {
   subject: string;
   text: string;
 } {
   const first = input.name.trim() || "Unknown";
   const status = input.status === "rejected" ? "REJECTED" : "SUBMITTED";
-  const subject = `Girlfriend application ${status}: ${first}, ${input.age || "?"}`.slice(
+  const place = visitor ? shortPlace(visitor) : "";
+  const subject = `Girlfriend application ${status}: ${first}, ${input.age || "?"}${place}`.slice(
     0,
     180,
   );
@@ -71,6 +76,12 @@ export function formatSubmission(input: Submission): {
     "",
   ];
 
+  if (visitor) {
+    lines.push("VISITOR");
+    lines.push(formatVisitor(visitor));
+    lines.push("");
+  }
+
   questions.forEach((question, index) => {
     const n = String(index + 1).padStart(2, "0");
     lines.push(`${n}. ${question.prompt}`);
@@ -80,4 +91,9 @@ export function formatSubmission(input: Submission): {
   });
 
   return { subject, text: lines.join("\n").trim() };
+}
+
+function shortPlace(visitor: Visitor): string {
+  const loc = shortLocation(visitor.geo);
+  return loc && loc !== "unknown location" ? ` · ${loc}` : visitor.ip ? ` · ${visitor.ip}` : "";
 }

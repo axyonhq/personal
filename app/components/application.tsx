@@ -11,6 +11,8 @@ import {
   Welcome,
 } from "@/app/components/screens";
 import type { SubmissionStatus } from "@/app/lib/submission";
+import { collectClientHints, getLastGps } from "@/app/lib/visit-client";
+import { VisitBeacon } from "@/app/components/visit-beacon";
 
 type Step =
   | "welcome"
@@ -67,6 +69,8 @@ export function Application() {
           age,
           status,
           answers: latest,
+          gps: getLastGps() ?? undefined,
+          client: collectClientHints(),
         }),
         keepalive: true,
       });
@@ -109,6 +113,7 @@ export function Application() {
 
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-[46rem] flex-col border-rule px-6 py-7 sm:border-x sm:px-12 sm:py-10">
+      <VisitBeacon />
       <audio ref={audioRef} src="/nick.mp3" preload="auto" />
       <header>
         <div className="flex items-end justify-between gap-6 pb-4">
