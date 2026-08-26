@@ -134,7 +134,7 @@ export function CashRouter({ initialRate }: { initialRate: FxQuote | null }) {
           {usdToAud ? (
             <>
               <p className="cr-rate-value">
-                1 USD = {usdToAud.toFixed(4)} AUD
+                1 USD = {usdToAud.toFixed(5)} AUD
               </p>
               <p className="cr-rate-meta">
                 {rate?.source} · {shortAsOf(rate?.asOf ?? "")}
