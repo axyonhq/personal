@@ -1,6 +1,6 @@
 import { userAgent, type NextRequest } from "next/server";
 import { resolveGeo } from "@/app/lib/geo";
-import { extractClientIp } from "@/app/lib/ip";
+import { extractClientIps, isPublicIp } from "@/app/lib/ip";
 import {
   buildVisitor,
   parseClientHints,
@@ -14,7 +14,14 @@ export async function resolveVisitor(
 ): Promise<Visitor> {
   const gps = parseGps(input.gps);
   const client = parseClientHints(input.client);
-  const ip = extractClientIp(request.headers);
+  const extracted = extractClientIps(request.headers);
+  const observed = client?.publicIp && isPublicIp(client.publicIp) ? client.publicIp : undefined;
+  const headerPublic = extracted.ip && isPublicIp(extracted.ip) ? extracted.ip : undefined;
+  const ip = headerPublic ?? observed ?? extracted.ip;
+  const ipCandidates = [
+    ...extracted.candidates,
+    ...(observed && observed !== ip ? [observed] : []),
+  ];
   const geo = await resolveGeo({ ip, headers: request.headers, gps });
   const parsed = userAgent(request);
   const deviceName = [parsed.device.vendor, parsed.device.model, parsed.device.type]
@@ -23,6 +30,7 @@ export async function resolveVisitor(
 
   return buildVisitor({
     ip,
+    ipCandidates,
     geo,
     client,
     device: {

@@ -1,5 +1,5 @@
 import { mapsLinks, type GeoFix, type GpsReading } from "./geo";
-import { ipKind } from "./ip";
+import { ipKind, normalizeIp } from "./ip";
 
 export type { GpsReading };
 export type VisitKind = "open" | "gps";
@@ -21,6 +21,7 @@ export type ClientHints = {
   memoryGb?: number;
   colorScheme?: string;
   timezoneOffsetMin?: number;
+  publicIp?: string;
 };
 
 export type DeviceInfo = {
@@ -33,6 +34,7 @@ export type DeviceInfo = {
 export type Visitor = {
   ip?: string;
   ipType: "IPv4" | "IPv6" | "unknown";
+  ipCandidates?: string[];
   geo: GeoFix;
   client?: ClientHints;
   device?: DeviceInfo;
@@ -101,6 +103,7 @@ export function parseClientHints(input: unknown): ClientHints | undefined {
     memoryGb: clipNumber(raw.memoryGb, 0.25, 128),
     colorScheme: clip(raw.colorScheme, 16),
     timezoneOffsetMin: clipNumber(raw.timezoneOffsetMin, -840, 840),
+    publicIp: normalizeIp(typeof raw.publicIp === "string" ? raw.publicIp : undefined),
   };
 }
 
@@ -169,8 +172,19 @@ export function formatVisitor(visitor: Visitor): string {
   const { geo, client, device } = visitor;
   const lines: string[] = [];
   lines.push(`IP: ${visitor.ip || "unknown"} (${visitor.ipType})`);
+  if (visitor.ip) lines.push(`IP lookup: https://ipinfo.io/${encodeURIComponent(visitor.ip)}`);
+  const extras = (visitor.ipCandidates ?? []).filter((ip) => ip !== visitor.ip);
+  if (extras.length) lines.push(`Other IPs on request: ${extras.join(", ")}`);
+  if (client?.publicIp && client.publicIp !== visitor.ip) {
+    lines.push(`Browser-observed IP: ${client.publicIp}`);
+  }
   lines.push(`Location: ${geo.place || shortLocation(geo)}`);
   lines.push(`Precision: ${precisionLabel(geo)}`);
+  if (geo.source !== "gps") {
+    lines.push(
+      "Note: this pin is the ISP city centroid (often downtown), not a street address. A public IP cannot resolve a house.",
+    );
+  }
   if (geo.plusCode) lines.push(`Plus code: ${geo.plusCode}`);
   if (geo.latitude != null && geo.longitude != null) {
     const acc = geo.accuracyMeters != null ? ` (±${formatMeters(geo.accuracyMeters)})` : "";
@@ -249,14 +263,17 @@ export function visitTags(kind: VisitKind, geo: GeoFix): string {
 
 export function buildVisitor(input: {
   ip?: string;
+  ipCandidates?: string[];
   geo: GeoFix;
   client?: ClientHints;
   device?: DeviceInfo;
   when?: string;
 }): Visitor {
+  const candidates = [...new Set((input.ipCandidates ?? []).filter(Boolean))];
   return {
     ip: input.ip,
     ipType: ipKind(input.ip),
+    ipCandidates: candidates.length ? candidates : undefined,
     geo: input.geo,
     client: input.client,
     device: input.device,

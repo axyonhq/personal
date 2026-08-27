@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildPlace, inferPrecision, mapsLinks, mergeGeo, type GeoFix } from "./geo";
+import { buildPlace, inferPrecision, isUsableGps, mapsLinks, mergeGeo, type GeoFix } from "./geo";
 import {
   buildVisitor,
   formatMeters,
@@ -63,6 +63,10 @@ describe("parseClientHints", () => {
     assert.equal(hints?.timezone, "America/Chicago");
     assert.equal(hints?.userAgent?.length, 400);
     assert.deepEqual(hints?.languages, ["en-US", "es"]);
+    assert.equal(
+      parseClientHints({ publicIp: " 203.0.113.9 " })?.publicIp,
+      "203.0.113.9",
+    );
     assert.equal(parseVisitKind("gps"), "gps");
     assert.equal(parseVisitKind("nope"), "open");
   });
@@ -156,6 +160,27 @@ describe("mergeGeo", () => {
     assert.ok(merged.alsoReported?.some((item) => item.includes("San Jose")));
     assert.ok(!merged.place?.includes("95113"));
   });
+
+  it("ignores coarse GPS so a downtown reverse-geocode cannot fake a street", () => {
+    const merged = mergeGeo(
+      [ipFix],
+      { latitude: 30.2672, longitude: -97.7431, accuracy: 18000 },
+      {
+        place: "Austin City Hall, 301 W 2nd Street, Austin, Texas",
+        houseNumber: "301",
+        road: "W 2nd Street",
+        city: "Austin",
+        sources: ["nominatim"],
+      },
+    );
+    assert.equal(merged.source, "ip");
+    assert.equal(merged.precision, "city");
+    assert.equal(merged.houseNumber, undefined);
+    assert.equal(merged.road, undefined);
+    assert.ok(!merged.place?.includes("W 2nd"));
+    assert.equal(isUsableGps({ latitude: 30.26, longitude: -97.74, accuracy: 18000 }), false);
+    assert.equal(isUsableGps({ latitude: 30.26, longitude: -97.74, accuracy: 12 }), true);
+  });
 });
 
 describe("formatVisitor", () => {
@@ -177,12 +202,24 @@ describe("formatVisitor", () => {
     });
     const text = formatVisitor(visitor);
     assert.match(text, /IP: 203\.0\.113\.42 \(IPv4\)/);
+    assert.match(text, /IP lookup: https:\/\/ipinfo\.io\/203\.0\.113\.42/);
+    assert.match(text, /ISP city centroid/);
     assert.match(text, /Austin/);
     assert.match(text, /Google Maps: https:\/\/www\.google\.com\/maps/);
     assert.match(text, /Referrer: https:\/\/instagram\.com\//);
     assert.equal(shortLocation(visitor.geo), "Austin, TX");
     assert.equal(visitSubject("open", visitor), "GF app OPENED: Austin, TX · 203.0.113.42");
     assert.equal(inferPrecision({ source: "ip", city: "Austin" }), "city");
+    assert.equal(
+      inferPrecision({
+        source: "gps",
+        houseNumber: "301",
+        road: "W 2nd Street",
+        city: "Austin",
+        accuracyMeters: 18000,
+      }),
+      "city",
+    );
     assert.equal(formatMeters(12.4), "12 m");
     const maps = mapsLinks(30.26, -97.74, 19);
     assert.match(maps.apple, /maps\.apple\.com/);
