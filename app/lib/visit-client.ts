@@ -1,11 +1,16 @@
+import { isUsableGps } from "@/app/lib/geo";
+import { parseGps } from "@/app/lib/visitor";
 import type { ClientHints, GpsReading, VisitKind } from "@/app/lib/visitor";
 
 const OPEN_KEY = "gf-visit-open";
 const GPS_KEY = "gf-visit-gps";
 const GPS_DENIED_KEY = "gf-visit-gps-denied";
+const GPS_FIX_KEY = "gf-visit-gps-fix";
 
-let lastGps: GpsReading | null = null;
+let lastGps: GpsReading | null = loadStoredGps();
 let gpsWatchId: number | null = null;
+let observedPublicIp: string | undefined;
+let observingPublicIp: Promise<void> | null = null;
 
 export function getLastGps(): GpsReading | null {
   return lastGps;
@@ -51,6 +56,7 @@ export function collectClientHints(): ClientHints {
     memoryGb: nav.deviceMemory,
     colorScheme: window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
     timezoneOffsetMin: new Date().getTimezoneOffset(),
+    publicIp: observedPublicIp,
   };
 }
 
@@ -83,6 +89,24 @@ function storageSet(key: string) {
   }
 }
 
+function loadStoredGps(): GpsReading | null {
+  try {
+    const raw = sessionStorage.getItem(GPS_FIX_KEY);
+    if (!raw) return null;
+    return parseGps(JSON.parse(raw)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function persistGps(fix: GpsReading) {
+  try {
+    sessionStorage.setItem(GPS_FIX_KEY, JSON.stringify(fix));
+  } catch {
+    // Ignore quota / private mode.
+  }
+}
+
 function readFix(position: GeolocationPosition): GpsReading {
   return {
     latitude: position.coords.latitude,
@@ -98,6 +122,7 @@ function readFix(position: GeolocationPosition): GpsReading {
 function rememberGps(fix: GpsReading) {
   if (!lastGps || (fix.accuracy ?? Infinity) < (lastGps.accuracy ?? Infinity)) {
     lastGps = fix;
+    persistGps(fix);
   }
 }
 
@@ -109,9 +134,8 @@ function stopWatch() {
 }
 
 async function sendBestGps() {
-  if (!lastGps || storageGet(GPS_KEY)) return;
+  if (!isUsableGps(lastGps) || storageGet(GPS_KEY)) return;
   storageSet(GPS_KEY);
-  stopWatch();
   try {
     await postVisit("gps", lastGps);
   } catch {
@@ -126,48 +150,88 @@ function onGpsError(error: GeolocationPositionError) {
   }
 }
 
-function startGpsWatch() {
-  if (!navigator.geolocation || storageGet(GPS_KEY) || storageGet(GPS_DENIED_KEY)) return;
-  if (gpsWatchId != null) return;
+const GPS_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 20000,
+  maximumAge: 0,
+};
 
-  const options: PositionOptions = {
-    enableHighAccuracy: true,
-    timeout: 20000,
-    maximumAge: 0,
-  };
+function startGpsWatch() {
+  if (!navigator.geolocation || storageGet(GPS_DENIED_KEY)) return;
+  if (gpsWatchId != null) return;
 
   try {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         rememberGps(readFix(position));
-        if ((lastGps?.accuracy ?? Infinity) <= 25) {
-          void sendBestGps();
-        }
+        if (isUsableGps(lastGps)) void sendBestGps();
       },
       onGpsError,
-      options,
+      GPS_OPTIONS,
     );
 
     gpsWatchId = navigator.geolocation.watchPosition(
       (position) => {
         rememberGps(readFix(position));
-        if ((lastGps?.accuracy ?? Infinity) <= 20) {
+        if (isUsableGps(lastGps)) {
           void sendBestGps();
+          if ((lastGps?.accuracy ?? Infinity) <= 20) stopWatch();
         }
       },
       onGpsError,
-      options,
+      GPS_OPTIONS,
     );
   } catch {
     return;
   }
+}
 
-  window.setTimeout(() => {
-    void sendBestGps();
-  }, 12000);
+function observePublicIp() {
+  if (observingPublicIp) return observingPublicIp;
+  observingPublicIp = fetch("https://api.ipify.org?format=json", { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((data) => {
+      if (data && typeof data.ip === "string") observedPublicIp = data.ip.trim();
+    })
+    .catch(() => {
+      // Header IP is the fallback.
+    });
+  return observingPublicIp;
+}
+
+/** Call from a click/tap so iOS Safari will actually prompt for GPS. */
+export function requestPreciseLocation() {
+  startGpsWatch();
+  void observePublicIp();
+}
+
+export function waitForGps(timeoutMs = 8000): Promise<GpsReading | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation || storageGet(GPS_DENIED_KEY)) {
+    return Promise.resolve(lastGps);
+  }
+  startGpsWatch();
+  if (isUsableGps(lastGps)) return Promise.resolve(lastGps);
+
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let firstFixAt: number | null = lastGps ? started : null;
+    const timer = window.setInterval(() => {
+      if (!firstFixAt && lastGps) firstFixAt = Date.now();
+      const waited = Date.now() - started;
+      const sinceFix = firstFixAt ? Date.now() - firstFixAt : 0;
+      const coarseSettled = Boolean(firstFixAt && sinceFix >= 2500 && !isUsableGps(lastGps));
+      if (isUsableGps(lastGps) || storageGet(GPS_DENIED_KEY) || waited >= timeoutMs || coarseSettled) {
+        window.clearInterval(timer);
+        resolve(lastGps);
+      }
+    }, 250);
+  });
 }
 
 export function startVisitTracking() {
+  lastGps = lastGps ?? loadStoredGps();
+  void observePublicIp();
+
   if (!storageGet(OPEN_KEY)) {
     storageSet(OPEN_KEY);
     void postVisit("open").catch(() => {});

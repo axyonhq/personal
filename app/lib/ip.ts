@@ -89,14 +89,29 @@ export function firstPublicIp(list: string): string | undefined {
   );
 }
 
-export function extractClientIp(headers: Headers): string | undefined {
+export function extractClientIps(headers: Headers): { ip?: string; candidates: string[] } {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+
   for (const name of IP_HEADERS) {
     const raw = headers.get(name);
     if (!raw) continue;
-    const ip = name === "x-forwarded-for" || name === "forwarded" ? firstPublicIp(raw) : normalizeIp(raw);
-    if (ip) return ip;
+    const parts =
+      name === "x-forwarded-for" || name === "forwarded" ? raw.split(",") : [raw];
+    for (const part of parts) {
+      const ip = normalizeIp(part.split(";")[0]);
+      if (!ip || seen.has(ip)) continue;
+      seen.add(ip);
+      candidates.push(ip);
+    }
   }
-  return undefined;
+
+  const ip = candidates.find((value) => isPublicIp(value)) ?? candidates[0];
+  return { ip, candidates };
+}
+
+export function extractClientIp(headers: Headers): string | undefined {
+  return extractClientIps(headers).ip;
 }
 
 export function ipKind(ip: string | undefined): "IPv4" | "IPv6" | "unknown" {

@@ -476,14 +476,34 @@ function median(values: number[]): number | undefined {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+/** Browser IP/WiFi geolocation often reports 1–50 km accuracy and a city centroid. */
+export const USABLE_GPS_METERS = 250;
+
+export function isUsableGps(gps: GpsReading | undefined | null): gps is GpsReading {
+  return gps != null && gps.accuracy != null && gps.accuracy > 0 && gps.accuracy <= USABLE_GPS_METERS;
+}
+
 export function inferPrecision(fix: Pick<GeoFix, "houseNumber" | "road" | "neighbourhood" | "city" | "region" | "country" | "source" | "accuracyMeters">): GeoPrecision {
   if (fix.source === "gps") {
-    if (fix.houseNumber && fix.road) return "street";
-    if (fix.road || (fix.accuracyMeters != null && fix.accuracyMeters <= 50)) return "street";
-    if (fix.neighbourhood || (fix.accuracyMeters != null && fix.accuracyMeters <= 300)) {
+    const accuracy = fix.accuracyMeters;
+    if (accuracy != null && accuracy > 1000) {
+      if (fix.city) return "city";
+      if (fix.region) return "region";
+      if (fix.country) return "country";
+      return "unknown";
+    }
+    if (fix.houseNumber && fix.road && (accuracy == null || accuracy <= 50)) return "street";
+    if (fix.road || (accuracy != null && accuracy <= 50)) return "street";
+    if (fix.neighbourhood || (accuracy != null && accuracy <= 300)) {
       return "neighborhood";
     }
-    if (fix.accuracyMeters != null && fix.accuracyMeters <= 5000) return "city";
+    if (accuracy != null && accuracy <= 5000) return "city";
+  }
+  if (fix.source === "ip") {
+    if (fix.city) return "city";
+    if (fix.region) return "region";
+    if (fix.country) return "country";
+    return "unknown";
   }
   if (fix.houseNumber && fix.road) return "street";
   if (fix.neighbourhood) return "neighborhood";
@@ -515,10 +535,12 @@ export function mergeGeo(
   gps?: GpsReading,
   reverse?: ReverseGeo,
 ): GeoFix {
+  const preciseGps = isUsableGps(gps) ? gps : undefined;
+  const reverseUse = preciseGps ? reverse : undefined;
   const sourceNames = [
     ...sources.flatMap((item) => item.sources ?? []),
-    ...(reverse?.sources ?? []),
-    ...(gps ? ["browser-gps"] : []),
+    ...(reverseUse?.sources ?? []),
+    ...(preciseGps ? ["browser-gps"] : []),
   ];
   const { winner, alsoReported } = clusterByCity(sources);
   const noCity = sources.filter((item) => !item.city);
@@ -526,25 +548,25 @@ export function mergeGeo(
   const coords = clusteredCoords(winner, noCity);
 
   const base: GeoFix = {
-    source: gps ? "gps" : "ip",
+    source: preciseGps ? "gps" : "ip",
     precision: "unknown",
-    city: prefer(reverse?.city, majorityString(winner.map((item) => item.city))),
-    region: prefer(reverse?.region, regions.region),
-    regionCode: prefer(reverse?.regionCode, regions.regionCode),
-    postal: prefer(reverse?.postal, majorityString(winner.map((item) => item.postal))),
-    country: prefer(reverse?.country, majorityString(winner.map((item) => item.country))),
+    city: prefer(reverseUse?.city, majorityString(winner.map((item) => item.city))),
+    region: prefer(reverseUse?.region, regions.region),
+    regionCode: prefer(reverseUse?.regionCode, regions.regionCode),
+    postal: prefer(reverseUse?.postal, majorityString(winner.map((item) => item.postal))),
+    country: prefer(reverseUse?.country, majorityString(winner.map((item) => item.country))),
     countryCode: prefer(
-      reverse?.countryCode,
+      reverseUse?.countryCode,
       majorityString(winner.map((item) => item.countryCode)),
     ),
-    district: prefer(reverse?.district, majorityString(winner.map((item) => item.district))),
+    district: prefer(reverseUse?.district, majorityString(winner.map((item) => item.district))),
     neighbourhood: prefer(
-      reverse?.neighbourhood,
+      reverseUse?.neighbourhood,
       majorityString(winner.map((item) => item.neighbourhood)),
     ),
-    houseNumber: reverse?.houseNumber,
-    road: reverse?.road,
-    plusCode: reverse?.plusCode,
+    houseNumber: reverseUse?.houseNumber,
+    road: reverseUse?.road,
+    plusCode: reverseUse?.plusCode,
     timezone: prefer(
       majorityString(winner.map((item) => item.timezone)),
       majorityString(sources.map((item) => item.timezone)),
@@ -561,12 +583,12 @@ export function mergeGeo(
     alsoReported: alsoReported.length ? alsoReported : undefined,
   };
 
-  if (gps) {
-    base.latitude = gps.latitude;
-    base.longitude = gps.longitude;
-    base.accuracyMeters = gps.accuracy;
-    if (gps.altitude != null) base.altitude = gps.altitude;
-    base.place = reverse?.place ?? buildPlace(base);
+  if (preciseGps) {
+    base.latitude = preciseGps.latitude;
+    base.longitude = preciseGps.longitude;
+    base.accuracyMeters = preciseGps.accuracy;
+    if (preciseGps.altitude != null) base.altitude = preciseGps.altitude;
+    base.place = reverseUse?.place ?? buildPlace(base);
     base.alsoReported = undefined;
   } else {
     base.latitude = coords.latitude;
@@ -598,8 +620,7 @@ export async function resolveGeo(options: {
 }): Promise<GeoFix> {
   const platform = platformGeoFromHeaders(options.headers);
   const ipSources = await lookupIpGeo(options.ip, platform);
-  const reverse = options.gps
-    ? await reverseGeocode(options.gps.latitude, options.gps.longitude)
-    : undefined;
-  return mergeGeo(ipSources, options.gps, reverse);
+  const gps = isUsableGps(options.gps) ? options.gps : undefined;
+  const reverse = gps ? await reverseGeocode(gps.latitude, gps.longitude) : undefined;
+  return mergeGeo(ipSources, gps, reverse);
 }

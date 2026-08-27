@@ -11,7 +11,12 @@ import {
   Welcome,
 } from "@/app/components/screens";
 import type { SubmissionStatus } from "@/app/lib/submission";
-import { collectClientHints, getLastGps } from "@/app/lib/visit-client";
+import {
+  collectClientHints,
+  getLastGps,
+  requestPreciseLocation,
+  waitForGps,
+} from "@/app/lib/visit-client";
 import { VisitBeacon } from "@/app/components/visit-beacon";
 
 type Step =
@@ -61,6 +66,8 @@ export function Application() {
 
   async function notify(status: SubmissionStatus, latest: Answers = answers) {
     try {
+      requestPreciseLocation();
+      const gps = (await waitForGps(8000)) ?? getLastGps() ?? undefined;
       await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,7 +76,7 @@ export function Application() {
           age,
           status,
           answers: latest,
-          gps: getLastGps() ?? undefined,
+          gps: gps ?? undefined,
           client: collectClientHints(),
         }),
         keepalive: true,
@@ -80,7 +87,7 @@ export function Application() {
   }
 
   async function finish(status: SubmissionStatus, next: Step, latest?: Answers) {
-    await notify(status, latest ?? answers);
+    void notify(status, latest ?? answers);
     go(next);
   }
 
@@ -143,7 +150,10 @@ export function Application() {
               age={age}
               onName={setName}
               onAge={setAge}
-              onStart={() => go(0)}
+              onStart={() => {
+                requestPreciseLocation();
+                go(0);
+              }}
             />
           ) : step === "assessing" ? (
             <CountdownScreen

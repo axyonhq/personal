@@ -63,6 +63,18 @@ describe("extractClientIp", () => {
       "2001:db8::ab",
     );
   });
+
+  it("skips a private proxy hop in favor of the public client IP", () => {
+    assert.equal(
+      extractClientIp(
+        new Headers({
+          "x-real-ip": "10.0.0.8",
+          "x-forwarded-for": "10.0.0.8, 203.0.113.91",
+        }),
+      ),
+      "203.0.113.91",
+    );
+  });
 });
 
 describe("ipKind", () => {
