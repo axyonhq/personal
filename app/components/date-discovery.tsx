@@ -24,6 +24,7 @@ type View = {
   readyCredits?: number;
   nextCreditAt: string;
   persisted: boolean;
+  vault?: boolean;
 };
 
 type Cinema = {
@@ -198,20 +199,33 @@ export function DateDiscovery() {
   }
 
   async function tryUnlock(date: PuzzleDate, hint: Hint) {
-    if (!state || cinema) return;
-    if (state.unlockedHintIds.includes(hint.id)) return;
-    if (state.decisions[date.id] !== "accepted") return;
+    if (!state || cinema || busy) return;
+    if (state.unlockedHintIds.includes(hint.id)) {
+      setError("already_unlocked");
+      return;
+    }
+    if (state.decisions[date.id] !== "accepted") {
+      setError("not_accepted");
+      setShakeId(hint.id);
+      window.setTimeout(() => setShakeId(""), 450);
+      return;
+    }
     if (!creditAvailable(state, now)) {
+      setError("no_credit");
       setShakeId(hint.id);
       window.setTimeout(() => setShakeId(""), 450);
       return;
     }
     setBusy(true);
+    setError("");
     try {
       const next = await post({ action: "unlock", hintId: hint.id });
       const unlocked = allHints().find((item) => item.id === hint.id);
       if (unlocked && next.state.unlockedHintIds.includes(hint.id)) {
         runCinema(unlocked);
+      } else {
+        setError("That piece stayed sealed.");
+        await refresh().catch(() => undefined);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "That piece stayed sealed.");
@@ -286,8 +300,12 @@ export function DateDiscovery() {
         />
       ))}
 
-      {view && !view.persisted ? (
-        <p className="dx-note">Saving on this visit until the cute vault is fully connected.</p>
+      {view && view.persisted === false ? (
+        <p className="dx-note">
+          Progress will save on this phone after your first tap — shared vault still warming up.
+        </p>
+      ) : view && view.vault === false ? (
+        <p className="dx-note">Saved on this phone for now. Shared vault still warming up.</p>
       ) : null}
 
       {invite ? (
