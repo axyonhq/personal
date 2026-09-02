@@ -14,10 +14,11 @@ const ERROR_STATUS: Record<string, number> = {
 };
 
 function fail(error: unknown, fallback = "store_failed") {
-  const name = error instanceof Error && error.name && error.name !== "Error" ? error.name : "";
+  const name = error instanceof Error ? error.name : "";
   const message = error instanceof Error ? error.message : fallback;
-  const code = name || message || fallback;
+  const code = name && ERROR_STATUS[name] ? name : message || fallback;
   const status = ERROR_STATUS[code] ?? 500;
+  console.error("discovery_api_failed", error);
   return Response.json({ ok: false, error: code }, { status });
 }
 

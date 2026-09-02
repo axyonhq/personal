@@ -2,7 +2,7 @@ create table if not exists public.date_discovery_state (
   id text primary key check (id = 'singleton'),
   decisions jsonb not null default '{}'::jsonb,
   unlocked_hint_ids text[] not null default '{}'::text[],
-  last_unlock_day text,
+  last_unlock_days jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
