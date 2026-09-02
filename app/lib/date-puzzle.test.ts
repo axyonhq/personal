@@ -4,7 +4,7 @@ import {
   applyDecision,
   applyUnlock,
   baliWallTime,
-  dateCreditAvailable,
+  creditAvailable,
   emptyState,
   formatDateTitle,
   formatStartTime,
@@ -44,37 +44,37 @@ describe("nextCreditAt", () => {
   });
 });
 
-describe("RSVP and per-date credits", () => {
+describe("RSVP and one shared daily credit", () => {
   it("blocks hints until a date is accepted", () => {
     const now = baliWallTime(2026, 9, 2, 10);
     const state = emptyState();
     assert.equal(pendingDate(state)?.id, "2026-09-07");
-    assert.equal(dateCreditAvailable(state, "2026-09-07", now), false);
+    assert.equal(creditAvailable(state, now), false);
     const unlocked = applyUnlock(state, "d1-strawberry", now);
     assert.equal(unlocked.ok, false);
     if (!unlocked.ok) assert.equal(unlocked.error, "not_accepted");
   });
 
-  it("grants one unlock per date after accept, then refuses a second the same puzzle day", () => {
+  it("grants one shared unlock after accept, then refuses a second the same puzzle day", () => {
     const now = baliWallTime(2026, 9, 2, 10);
     const accepted = applyDecision(emptyState(), "2026-09-07", "accepted");
     assert.equal(accepted.ok, true);
     if (!accepted.ok) return;
-    assert.equal(dateCreditAvailable(accepted.state, "2026-09-07", now), true);
+    assert.equal(creditAvailable(accepted.state, now), true);
 
     const first = applyUnlock(accepted.state, "d1-strawberry", now);
     assert.equal(first.ok, true);
     if (!first.ok) return;
     assert.deepEqual(first.state.unlockedHintIds, ["d1-strawberry"]);
-    assert.equal(first.state.lastUnlockDays["2026-09-07"], "2026-09-02");
-    assert.equal(dateCreditAvailable(first.state, "2026-09-07", now), false);
+    assert.equal(first.state.lastUnlockDay, "2026-09-02");
+    assert.equal(creditAvailable(first.state, now), false);
 
     const second = applyUnlock(first.state, "d1-icecream", now);
     assert.equal(second.ok, false);
     if (!second.ok) assert.equal(second.error, "no_credit");
   });
 
-  it("lets each date spend its own credit on the same day", () => {
+  it("lets her spend the one daily credit on either date, but not both", () => {
     const now = baliWallTime(2026, 9, 2, 10);
     const first = applyDecision(emptyState(), "2026-09-07", "accepted");
     assert.equal(first.ok, true);
@@ -82,30 +82,28 @@ describe("RSVP and per-date credits", () => {
     const both = applyDecision(first.state, "2026-09-09", "accepted");
     assert.equal(both.ok, true);
     if (!both.ok) return;
+    assert.equal(creditAvailable(both.state, now), true);
 
-    const a = applyUnlock(both.state, "d1-strawberry", now);
+    const a = applyUnlock(both.state, "d2-sunrise", now);
     assert.equal(a.ok, true);
     if (!a.ok) return;
-    assert.equal(dateCreditAvailable(a.state, "2026-09-07", now), false);
-    assert.equal(dateCreditAvailable(a.state, "2026-09-09", now), true);
+    assert.equal(creditAvailable(a.state, now), false);
 
-    const b = applyUnlock(a.state, "d2-sunrise", now);
-    assert.equal(b.ok, true);
-    if (!b.ok) return;
-    assert.deepEqual(b.state.unlockedHintIds, ["d1-strawberry", "d2-sunrise"]);
-    assert.equal(dateCreditAvailable(b.state, "2026-09-09", now), false);
+    const b = applyUnlock(a.state, "d1-strawberry", now);
+    assert.equal(b.ok, false);
+    if (!b.ok) assert.equal(b.error, "no_credit");
   });
 
-  it("does not stack unused days — only today's credit exists per date", () => {
+  it("does not stack unused days — only today's credit exists", () => {
     const accepted = applyDecision(emptyState(), "2026-09-07", "accepted");
     assert.equal(accepted.ok, true);
     if (!accepted.ok) return;
     const later = baliWallTime(2026, 9, 5, 10);
-    assert.equal(dateCreditAvailable(accepted.state, "2026-09-07", later), true);
+    assert.equal(creditAvailable(accepted.state, later), true);
     const first = applyUnlock(accepted.state, "d1-strawberry", later);
     assert.equal(first.ok, true);
     if (!first.ok) return;
-    assert.equal(dateCreditAvailable(first.state, "2026-09-07", later), false);
+    assert.equal(creditAvailable(first.state, later), false);
   });
 
   it("rejects a declined date's hints forever", () => {

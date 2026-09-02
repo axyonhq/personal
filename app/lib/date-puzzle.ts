@@ -17,9 +17,13 @@ export type PuzzleDate = {
 export type PuzzleState = {
   decisions: Record<string, DateDecision>;
   unlockedHintIds: string[];
-  /** Puzzle-day id of the last unlock, keyed by date id. Each date has its own daily credit. */
-  lastUnlockDays: Record<string, string>;
+  /** Bali puzzle-day id of the last unlock, shared across every date. */
+  lastUnlockDay: string | null;
+  epoch: string;
 };
+
+/** Bump this to wipe accepts and unlocks on the next load. */
+export const STATE_EPOCH = "v3-one-daily-credit";
 
 export type UnlockError =
   | "unknown_hint"
@@ -63,7 +67,7 @@ export const DATES: PuzzleDate[] = [
         id: "d2-compass",
         kind: "image",
         src: "/discovery/compass-north.png",
-        alt: "A compass pointing north",
+        alt: "A compass with a red needle pointing straight up at NORTH",
       },
       {
         id: "d2-helmet",
@@ -84,7 +88,8 @@ export const DATES: PuzzleDate[] = [
 export const emptyState = (): PuzzleState => ({
   decisions: {},
   unlockedHintIds: [],
-  lastUnlockDays: {},
+  lastUnlockDay: null,
+  epoch: STATE_EPOCH,
 });
 
 type ZoneParts = {
@@ -192,21 +197,14 @@ export function lockedHintsOnDate(state: PuzzleState, date: PuzzleDate): Hint[] 
   return date.hints.filter((hint) => !state.unlockedHintIds.includes(hint.id));
 }
 
-export function dateCreditAvailable(
-  state: PuzzleState,
-  dateId: string,
-  now: Date,
-  dates = DATES,
-): boolean {
-  const date = findDate(dateId, dates);
-  if (!date) return false;
-  if (state.decisions[dateId] !== "accepted") return false;
-  if (lockedHintsOnDate(state, date).length === 0) return false;
-  return (state.lastUnlockDays ?? {})[dateId] !== puzzleDayId(now);
+export function lockedHintsOnAccepted(state: PuzzleState, dates = DATES): Hint[] {
+  return acceptedDates(state, dates).flatMap((date) => lockedHintsOnDate(state, date));
 }
 
-export function readyCreditCount(state: PuzzleState, now: Date, dates = DATES): number {
-  return dates.filter((date) => dateCreditAvailable(state, date.id, now, dates)).length;
+/** One shared unlock credit per Bali day, spendable on any accepted date. */
+export function creditAvailable(state: PuzzleState, now: Date, dates = DATES): boolean {
+  if (lockedHintsOnAccepted(state, dates).length === 0) return false;
+  return state.lastUnlockDay !== puzzleDayId(now);
 }
 
 export function applyDecision(
@@ -240,7 +238,7 @@ export function applyUnlock(
   if (state.unlockedHintIds.includes(hintId)) {
     return { ok: false, error: "already_unlocked" };
   }
-  if (!dateCreditAvailable(state, found.date.id, now, dates)) {
+  if (!creditAvailable(state, now, dates)) {
     return { ok: false, error: "no_credit" };
   }
   return {
@@ -248,10 +246,7 @@ export function applyUnlock(
     state: {
       ...state,
       unlockedHintIds: [...state.unlockedHintIds, hintId],
-      lastUnlockDays: {
-        ...(state.lastUnlockDays ?? {}),
-        [found.date.id]: puzzleDayId(now),
-      },
+      lastUnlockDay: puzzleDayId(now),
     },
   };
 }
