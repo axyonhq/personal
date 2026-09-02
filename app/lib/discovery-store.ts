@@ -1,12 +1,11 @@
 import {
   applyDecision,
   applyUnlock,
-  dateCreditAvailable,
+  creditAvailable,
   emptyState,
   nextCreditAt,
   puzzleDayId,
-  readyCreditCount,
-  DATES,
+  STATE_EPOCH,
   type DateDecision,
   type PuzzleState,
 } from "./date-puzzle";
@@ -15,6 +14,7 @@ type DbRow = {
   id: string;
   decisions: Record<string, DateDecision> | null;
   unlocked_hint_ids: string[] | null;
+  last_unlock_day: string | null;
   last_unlock_days: Record<string, string> | null;
   updated_at: string;
 };
@@ -22,7 +22,7 @@ type DbRow = {
 type StoreConfig = { url: string; key: string };
 
 const globalStore = globalThis as typeof globalThis & {
-  __dateDiscoveryMemory?: PuzzleState;
+  __dateDiscoveryMemoryV3?: PuzzleState;
   __dateDiscoveryFallback?: boolean;
 };
 
@@ -38,17 +38,12 @@ export function discoveryConfigured(): boolean {
 }
 
 function memoryState(): PuzzleState {
-  const current = globalStore.__dateDiscoveryMemory ?? emptyState();
-  globalStore.__dateDiscoveryMemory = {
-    decisions: current.decisions ?? {},
-    unlockedHintIds: current.unlockedHintIds ?? [],
-    lastUnlockDays: current.lastUnlockDays ?? {},
-  };
-  return globalStore.__dateDiscoveryMemory;
+  globalStore.__dateDiscoveryMemoryV3 ??= emptyState();
+  return globalStore.__dateDiscoveryMemoryV3;
 }
 
 function setMemory(state: PuzzleState): PuzzleState {
-  globalStore.__dateDiscoveryMemory = state;
+  globalStore.__dateDiscoveryMemoryV3 = state;
   return state;
 }
 
@@ -62,10 +57,12 @@ function headers(key: string): HeadersInit {
 }
 
 function fromRow(row: DbRow): PuzzleState {
+  const day = row.last_unlock_day || row.last_unlock_days?.global || null;
   return {
     decisions: row.decisions ?? {},
     unlockedHintIds: row.unlocked_hint_ids ?? [],
-    lastUnlockDays: row.last_unlock_days ?? {},
+    lastUnlockDay: day || null,
+    epoch: row.last_unlock_days?.epoch ?? "",
   };
 }
 
@@ -102,16 +99,38 @@ function isMissingTable(error: string): boolean {
   return /could not find the table|relation .* does not exist|schema cache/i.test(error);
 }
 
+function persistBody(state: PuzzleState) {
+  return {
+    decisions: state.decisions,
+    unlocked_hint_ids: state.unlockedHintIds,
+    last_unlock_day: state.lastUnlockDay,
+    last_unlock_days: {
+      epoch: state.epoch,
+      global: state.lastUnlockDay ?? "",
+    },
+    updated_at: new Date().toISOString(),
+  };
+}
+
 async function readRow(conf: StoreConfig): Promise<PuzzleState> {
   const result = await rest<DbRow[]>(
     conf,
-    "date_discovery_state?id=eq.singleton&select=id,decisions,unlocked_hint_ids,last_unlock_days,updated_at",
+    "date_discovery_state?id=eq.singleton&select=id,decisions,unlocked_hint_ids,last_unlock_day,last_unlock_days,updated_at",
   );
   if (!result.ok) {
-    if (isMissingTable(result.error)) {
-      throw new Error("table_missing");
+    if (isMissingTable(result.error) || /last_unlock_day/i.test(result.error)) {
+      const fallback = await rest<DbRow[]>(
+        conf,
+        "date_discovery_state?id=eq.singleton&select=id,decisions,unlocked_hint_ids,last_unlock_days,updated_at",
+      );
+      if (!fallback.ok) {
+        if (isMissingTable(fallback.error)) throw new Error("table_missing");
+        throw new Error(fallback.error || "read_failed");
+      }
+      if (fallback.data?.[0]) return fromRow(fallback.data[0]);
+    } else {
+      throw new Error(result.error || "read_failed");
     }
-    throw new Error(result.error || "read_failed");
   }
   const row = result.data?.[0];
   if (row) return fromRow(row);
@@ -120,9 +139,7 @@ async function readRow(conf: StoreConfig): Promise<PuzzleState> {
     method: "POST",
     body: JSON.stringify({
       id: "singleton",
-      decisions: {},
-      unlocked_hint_ids: [],
-      last_unlock_days: {},
+      ...persistBody(emptyState()),
     }),
   });
   if (!inserted.ok || !inserted.data?.[0]) {
@@ -134,33 +151,42 @@ async function readRow(conf: StoreConfig): Promise<PuzzleState> {
 async function writeRow(conf: StoreConfig, state: PuzzleState): Promise<PuzzleState> {
   const result = await rest<DbRow[]>(conf, "date_discovery_state?id=eq.singleton", {
     method: "PATCH",
-    body: JSON.stringify({
-      decisions: state.decisions,
-      unlocked_hint_ids: state.unlockedHintIds,
-      last_unlock_days: state.lastUnlockDays,
-      updated_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify(persistBody(state)),
   });
-  if (!result.ok || !result.data?.[0]) {
-    throw new Error(result.error || "write_failed");
+  if (result.ok && result.data?.[0]) return fromRow(result.data[0]);
+
+  const { last_unlock_day: _day, ...withoutDay } = persistBody(state);
+  const retry = await rest<DbRow[]>(conf, "date_discovery_state?id=eq.singleton", {
+    method: "PATCH",
+    body: JSON.stringify(withoutDay),
+  });
+  if (!retry.ok || !retry.data?.[0]) {
+    throw new Error(retry.error || result.error || "write_failed");
   }
-  return fromRow(result.data[0]);
+  return fromRow(retry.data[0]);
 }
 
 async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState) => Promise<T>): Promise<T> {
   const conf = config();
   if (!conf) {
     globalStore.__dateDiscoveryFallback = true;
-    return fn(null, memoryState());
+    const current = memoryState();
+    if (current.epoch !== STATE_EPOCH) {
+      return fn(null, setMemory(emptyState()));
+    }
+    return fn(null, current);
   }
   try {
-    const current = await readRow(conf);
+    let current = await readRow(conf);
     globalStore.__dateDiscoveryFallback = false;
+    if (current.epoch !== STATE_EPOCH) {
+      current = await writeRow(conf, emptyState());
+    }
     return fn(conf, current);
   } catch (error) {
     if (error instanceof Error && error.message === "table_missing") {
       globalStore.__dateDiscoveryFallback = true;
-      return fn(null, memoryState());
+      return fn(null, setMemory(emptyState()));
     }
     throw error;
   }
@@ -168,6 +194,13 @@ async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState)
 
 export async function loadPuzzleState(): Promise<PuzzleState> {
   return withStore(async (_conf, current) => current);
+}
+
+export async function resetPuzzleState(): Promise<PuzzleState> {
+  return withStore(async (conf) => {
+    const fresh = emptyState();
+    return conf ? writeRow(conf, fresh) : setMemory(fresh);
+  });
 }
 
 export async function decideDate(dateId: string, decision: DateDecision): Promise<PuzzleState> {
@@ -195,13 +228,9 @@ export async function unlockHint(hintId: string, now = new Date()): Promise<Puzz
 }
 
 export function viewFor(state: PuzzleState, now = new Date()) {
-  const creditsByDate = Object.fromEntries(
-    DATES.map((date) => [date.id, dateCreditAvailable(state, date.id, now)]),
-  );
   return {
     state,
-    creditsByDate,
-    readyCredits: readyCreditCount(state, now),
+    creditAvailable: creditAvailable(state, now),
     puzzleDay: puzzleDayId(now),
     nextCreditAt: nextCreditAt(now).toISOString(),
     persisted: discoveryConfigured() && !globalStore.__dateDiscoveryFallback,

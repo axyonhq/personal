@@ -288,9 +288,35 @@ body:has(.discovery) ::selection {
 
 .dx-hint img {
   width: 100%;
-  height: 10.6rem;
-  object-fit: cover;
+  height: 12.4rem;
+  object-fit: contain;
+  background: #ffeaf4;
   display: block;
+}
+
+.dx-hint-image {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.dx-north-tag {
+  position: absolute;
+  top: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  box-shadow: 0 6px 14px rgba(225, 29, 72, 0.28);
 }
 
 .dx-hint-text {

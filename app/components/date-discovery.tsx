@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DATES,
   allHints,
-  dateCreditAvailable,
+  creditAvailable,
   formatDateTitle,
   formatStartTime,
   nextCreditAt,
@@ -20,7 +20,7 @@ type View = {
   ok: boolean;
   error?: string;
   state: PuzzleState;
-  creditsByDate?: Record<string, boolean>;
+  creditAvailable: boolean;
   readyCredits?: number;
   nextCreditAt: string;
   persisted: boolean;
@@ -82,7 +82,16 @@ function HintFace({ hint }: { hint: Hint }) {
     );
   }
   if (hint.kind === "image") {
-    return <img src={hint.src} alt={hint.alt} />;
+    return (
+      <span className="dx-hint-image">
+        <img src={hint.src} alt={hint.alt} />
+        {hint.id === "d2-compass" ? (
+          <span className="dx-north-tag" aria-hidden="true">
+            ↑ NORTH
+          </span>
+        ) : null}
+      </span>
+    );
   }
   return <p className="dx-hint-text">{hint.text}</p>;
 }
@@ -156,11 +165,9 @@ export function DateDiscovery() {
   const invite = state ? pendingDate(state) : null;
   const nextAt = useMemo(() => nextCreditAt(now), [now]);
   const nextParts = remainingUntil(now, nextAt);
+  const canUnlock = state ? creditAvailable(state, now) : Boolean(view?.creditAvailable);
   const unlockedCount = state?.unlockedHintIds.length ?? 0;
   const total = allHints().length;
-  const readyCredits =
-    view?.readyCredits ??
-    DATES.filter((date) => (state ? dateCreditAvailable(state, date.id, now) : false)).length;
 
   async function decide(decision: "accepted" | "rejected") {
     if (!invite || busy) return;
@@ -194,7 +201,7 @@ export function DateDiscovery() {
     if (!state || cinema) return;
     if (state.unlockedHintIds.includes(hint.id)) return;
     if (state.decisions[date.id] !== "accepted") return;
-    if (!dateCreditAvailable(state, date.id, now)) {
+    if (!creditAvailable(state, now)) {
       setShakeId(hint.id);
       window.setTimeout(() => setShakeId(""), 450);
       return;
@@ -247,8 +254,8 @@ export function DateDiscovery() {
       <p className="dx-kicker">A cute little secret · Bali time</p>
       <h1 className="dx-title">Date Discovery Puzzle</h1>
       <p className="dx-lede">
-        Each date is its own puzzle. Every morning at 6:00, every accepted date gets
-        one new piece. Tap the one you want. It stays yours forever.
+        Each date is its own little puzzle. Every morning at 6:00 you get{" "}
+        <em>one</em> unlock — spend it on whichever piece you want.
       </p>
 
       <div className="dx-hud">
@@ -258,9 +265,9 @@ export function DateDiscovery() {
             {unlockedCount} / {total} 💕
           </div>
         </div>
-        <div className="dx-credit" data-ready={readyCredits > 0 ? "true" : "false"}>
-          {readyCredits > 0
-            ? `${readyCredits} unlock${readyCredits === 1 ? "" : "s"} ready ✨`
+        <div className="dx-credit" data-ready={canUnlock ? "true" : "false"}>
+          {canUnlock
+            ? "1 unlock ready ✨"
             : `Next drop ${pad(nextParts.hours)}:${pad(nextParts.minutes)}:${pad(nextParts.seconds)}`}
         </div>
       </div>
@@ -273,6 +280,7 @@ export function DateDiscovery() {
           date={date}
           now={now}
           state={state}
+          canUnlock={canUnlock}
           shakeId={shakeId}
           onUnlock={tryUnlock}
         />
@@ -289,7 +297,7 @@ export function DateDiscovery() {
             <h2>{formatDateTitle(invite.startsAt)}</h2>
             <p>
               {formatStartTime(invite.startsAt)} · Bali. Say yes and this date becomes
-              a puzzle you get to unwrap, one flirty piece a day.
+              a puzzle. You get one flirty piece a day to spend anywhere you like.
             </p>
             {confirmReject ? (
               <>
@@ -377,12 +385,14 @@ function DateCard({
   date,
   now,
   state,
+  canUnlock,
   shakeId,
   onUnlock,
 }: {
   date: PuzzleDate;
   now: Date;
   state?: PuzzleState;
+  canUnlock: boolean;
   shakeId: string;
   onUnlock: (date: PuzzleDate, hint: Hint) => void;
 }) {
@@ -390,14 +400,13 @@ function DateCard({
   const start = new Date(date.startsAt);
   const left = remainingUntil(now, start);
   const unlockedHere = date.hints.filter((hint) => state?.unlockedHintIds.includes(hint.id)).length;
-  const canUnlock = state ? dateCreditAvailable(state, date.id, now) : false;
-  const nextParts = remainingUntil(now, nextCreditAt(now));
+  const dateCanUnlock = Boolean(decision === "accepted" && canUnlock);
 
   return (
     <article
       className="dx-date"
       data-declined={decision === "rejected" ? "true" : "false"}
-      data-ready={canUnlock ? "true" : "false"}
+      data-ready={dateCanUnlock ? "true" : "false"}
     >
       <div className="dx-date-head">
         <div>
@@ -410,20 +419,7 @@ function DateCard({
           </p>
           <h2 className="dx-date-title">{formatDateTitle(date.startsAt)}</h2>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
-          {decision === "accepted" ? (
-            <div
-              className="dx-credit"
-              data-ready={canUnlock ? "true" : "false"}
-              style={{ marginTop: "0.45rem" }}
-            >
-              {canUnlock
-                ? "1 hint ready 💕"
-                : `Next ${pad(nextParts.hours)}:${pad(nextParts.minutes)}`}
-            </div>
-          ) : null}
-        </div>
+        <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
       </div>
 
       {left.done ? <p className="dx-now">It&apos;s time, baby.</p> : <Count remaining={left} />}
@@ -434,7 +430,7 @@ function DateCard({
         <div className="dx-hints">
           {date.hints.map((hint) => {
             const unlocked = Boolean(state?.unlockedHintIds.includes(hint.id));
-            const can = decision === "accepted" && !unlocked && canUnlock;
+            const can = decision === "accepted" && !unlocked && dateCanUnlock;
             return (
               <button
                 key={hint.id}
@@ -468,7 +464,7 @@ function DateCard({
 function humanError(code: string): string {
   switch (code) {
     case "no_credit":
-      return "This date already used today’s piece. Come back at 6:00 AM Bali.";
+      return "Today’s piece is already spent. Come back at 6:00 AM Bali.";
     case "already_unlocked":
       return "That piece is already yours.";
     case "not_accepted":
