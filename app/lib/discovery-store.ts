@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import {
   applyDecision,
   applyUnlock,
@@ -21,9 +22,13 @@ type DbRow = {
 
 type StoreConfig = { url: string; key: string };
 
+const COOKIE_NAME = "dx_puzzle_v3";
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
+
 const globalStore = globalThis as typeof globalThis & {
   __dateDiscoveryMemoryV3?: PuzzleState;
   __dateDiscoveryFallback?: boolean;
+  __dateDiscoveryUsingCookie?: boolean;
 };
 
 function config(): StoreConfig | null {
@@ -64,6 +69,58 @@ function fromRow(row: DbRow): PuzzleState {
     lastUnlockDay: day || null,
     epoch: row.last_unlock_days?.epoch ?? "",
   };
+}
+
+function encodeCookie(state: PuzzleState): string {
+  return Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+}
+
+function decodeCookie(raw: string): PuzzleState | null {
+  try {
+    const json = Buffer.from(raw, "base64url").toString("utf8");
+    const parsed = JSON.parse(json) as Partial<PuzzleState>;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.epoch !== STATE_EPOCH) return emptyState();
+    return {
+      decisions:
+        parsed.decisions && typeof parsed.decisions === "object" ? parsed.decisions : {},
+      unlockedHintIds: Array.isArray(parsed.unlockedHintIds)
+        ? parsed.unlockedHintIds.filter((id): id is string => typeof id === "string")
+        : [],
+      lastUnlockDay: typeof parsed.lastUnlockDay === "string" ? parsed.lastUnlockDay : null,
+      epoch: STATE_EPOCH,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readCookieState(): Promise<PuzzleState | null> {
+  try {
+    const jar = await cookies();
+    const raw = jar.get(COOKIE_NAME)?.value;
+    if (!raw) return null;
+    return decodeCookie(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function writeCookieState(state: PuzzleState): Promise<PuzzleState> {
+  try {
+    const jar = await cookies();
+    jar.set(COOKIE_NAME, encodeCookie(state), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.VERCEL === "1" || process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: COOKIE_MAX_AGE,
+    });
+    globalStore.__dateDiscoveryUsingCookie = true;
+  } catch {
+    globalStore.__dateDiscoveryUsingCookie = false;
+  }
+  return setMemory(state);
 }
 
 async function rest<T>(
@@ -166,19 +223,31 @@ async function writeRow(conf: StoreConfig, state: PuzzleState): Promise<PuzzleSt
   return fromRow(retry.data[0]);
 }
 
+async function readLocal(): Promise<PuzzleState> {
+  const fromCookie = await readCookieState();
+  if (fromCookie) {
+    globalStore.__dateDiscoveryUsingCookie = true;
+    return setMemory(fromCookie);
+  }
+  // No cookie = this browser is fresh. Do not reuse another visitor's in-memory state.
+  return setMemory(emptyState());
+}
+
+async function writeLocal(state: PuzzleState): Promise<PuzzleState> {
+  return writeCookieState(state);
+}
+
 async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState) => Promise<T>): Promise<T> {
   const conf = config();
   if (!conf) {
     globalStore.__dateDiscoveryFallback = true;
-    const current = memoryState();
-    if (current.epoch !== STATE_EPOCH) {
-      return fn(null, setMemory(emptyState()));
-    }
-    return fn(null, current);
+    globalStore.__dateDiscoveryUsingCookie = false;
+    return fn(null, await readLocal());
   }
   try {
     let current = await readRow(conf);
     globalStore.__dateDiscoveryFallback = false;
+    globalStore.__dateDiscoveryUsingCookie = false;
     if (current.epoch !== STATE_EPOCH) {
       current = await writeRow(conf, emptyState());
     }
@@ -186,7 +255,8 @@ async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState)
   } catch (error) {
     if (error instanceof Error && error.message === "table_missing") {
       globalStore.__dateDiscoveryFallback = true;
-      return fn(null, setMemory(emptyState()));
+      globalStore.__dateDiscoveryUsingCookie = false;
+      return fn(null, await readLocal());
     }
     throw error;
   }
@@ -199,7 +269,7 @@ export async function loadPuzzleState(): Promise<PuzzleState> {
 export async function resetPuzzleState(): Promise<PuzzleState> {
   return withStore(async (conf) => {
     const fresh = emptyState();
-    return conf ? writeRow(conf, fresh) : setMemory(fresh);
+    return conf ? writeRow(conf, fresh) : writeLocal(fresh);
   });
 }
 
@@ -211,7 +281,7 @@ export async function decideDate(dateId: string, decision: DateDecision): Promis
       error.name = next.error;
       throw error;
     }
-    return conf ? writeRow(conf, next.state) : setMemory(next.state);
+    return conf ? writeRow(conf, next.state) : writeLocal(next.state);
   });
 }
 
@@ -223,16 +293,20 @@ export async function unlockHint(hintId: string, now = new Date()): Promise<Puzz
       error.name = next.error;
       throw error;
     }
-    return conf ? writeRow(conf, next.state) : setMemory(next.state);
+    return conf ? writeRow(conf, next.state) : writeLocal(next.state);
   });
 }
 
 export function viewFor(state: PuzzleState, now = new Date()) {
+  const vault = discoveryConfigured() && !globalStore.__dateDiscoveryFallback;
+  const cookie = Boolean(globalStore.__dateDiscoveryUsingCookie);
   return {
     state,
     creditAvailable: creditAvailable(state, now),
     puzzleDay: puzzleDayId(now),
     nextCreditAt: nextCreditAt(now).toISOString(),
-    persisted: discoveryConfigured() && !globalStore.__dateDiscoveryFallback,
+    /** Unlocks stick for this browser (vault and/or cookie). */
+    persisted: vault || cookie,
+    vault,
   };
 }
