@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DATES,
   allHints,
-  creditAvailable,
+  dateCreditAvailable,
   formatDateTitle,
   formatStartTime,
   nextCreditAt,
@@ -20,7 +20,8 @@ type View = {
   ok: boolean;
   error?: string;
   state: PuzzleState;
-  creditAvailable: boolean;
+  creditsByDate?: Record<string, boolean>;
+  readyCredits?: number;
   nextCreditAt: string;
   persisted: boolean;
 };
@@ -30,6 +31,21 @@ type Cinema = {
   phase: "windup" | "crack" | "reveal";
 };
 
+const HEARTS = [
+  { left: "6%", top: "12%", char: "♡", delay: "0s", size: "1.2rem" },
+  { left: "18%", top: "78%", char: "✨", delay: "1.2s", size: "1rem" },
+  { left: "28%", top: "22%", char: "💕", delay: "0.4s", size: "1.3rem" },
+  { left: "42%", top: "88%", char: "♡", delay: "2s", size: "1.1rem" },
+  { left: "58%", top: "8%", char: "🌸", delay: "0.8s", size: "1.15rem" },
+  { left: "72%", top: "64%", char: "💖", delay: "1.6s", size: "1.25rem" },
+  { left: "84%", top: "18%", char: "✨", delay: "0.2s", size: "0.95rem" },
+  { left: "90%", top: "82%", char: "♡", delay: "2.4s", size: "1.2rem" },
+  { left: "8%", top: "48%", char: "🎀", delay: "1.8s", size: "1.1rem" },
+  { left: "50%", top: "40%", char: "💗", delay: "0.6s", size: "1rem" },
+];
+
+const CONFETTI = ["💕", "✨", "🌸", "💖", "🎀", "⭐", "💘", "🩷"];
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -38,38 +54,23 @@ function playChime() {
   try {
     const ctx = new AudioContext();
     const now = ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99, 1046.5];
+    const notes = [523.25, 659.25, 783.99, 987.77, 1318.5];
     for (const [index, freq] of notes.entries()) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "triangle";
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.045, now + 0.02 + index * 0.09);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55 + index * 0.09);
+      gain.gain.linearRampToValueAtTime(0.05, now + 0.02 + index * 0.07);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5 + index * 0.07);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + index * 0.09);
-      osc.stop(now + 0.7 + index * 0.09);
+      osc.start(now + index * 0.07);
+      osc.stop(now + 0.65 + index * 0.07);
     }
   } catch {
     /* autoplay / unsupported */
   }
-}
-
-function LockIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M7 11V8a5 5 0 0 1 10 0v3"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-      <rect x="5" y="11" width="14" height="10" rx="2.2" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M12 15v2.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function HintFace({ hint }: { hint: Hint }) {
@@ -137,30 +138,29 @@ export function DateDiscovery() {
     });
   }, [refresh]);
 
-  const post = useCallback(
-    async (body: Record<string, string>) => {
-      const response = await fetch("/api/discovery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = (await response.json()) as View;
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "save_failed");
-      }
-      setView(data);
-      return data;
-    },
-    [],
-  );
+  const post = useCallback(async (body: Record<string, string>) => {
+    const response = await fetch("/api/discovery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json()) as View;
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "save_failed");
+    }
+    setView(data);
+    return data;
+  }, []);
 
   const state = view?.state;
   const invite = state ? pendingDate(state) : null;
-  const canUnlock = state ? creditAvailable(state, now) : false;
   const nextAt = useMemo(() => nextCreditAt(now), [now]);
   const nextParts = remainingUntil(now, nextAt);
   const unlockedCount = state?.unlockedHintIds.length ?? 0;
   const total = allHints().length;
+  const readyCredits =
+    view?.readyCredits ??
+    DATES.filter((date) => (state ? dateCreditAvailable(state, date.id, now) : false)).length;
 
   async function decide(decision: "accepted" | "rejected") {
     if (!invite || busy) return;
@@ -178,23 +178,23 @@ export function DateDiscovery() {
   function runCinema(hint: Hint) {
     if (reduced.current) {
       setCinema({ hint, phase: "reveal" });
-      window.setTimeout(() => setCinema(null), 1600);
+      window.setTimeout(() => setCinema(null), 1800);
       return;
     }
     setCinema({ hint, phase: "windup" });
-    window.setTimeout(() => setCinema({ hint, phase: "crack" }), 900);
+    window.setTimeout(() => setCinema({ hint, phase: "crack" }), 800);
     window.setTimeout(() => {
       playChime();
       setCinema({ hint, phase: "reveal" });
-    }, 1600);
-    window.setTimeout(() => setCinema(null), 4200);
+    }, 1450);
+    window.setTimeout(() => setCinema(null), 4300);
   }
 
   async function tryUnlock(date: PuzzleDate, hint: Hint) {
     if (!state || cinema) return;
     if (state.unlockedHintIds.includes(hint.id)) return;
     if (state.decisions[date.id] !== "accepted") return;
-    if (!canUnlock) {
+    if (!dateCreditAvailable(state, date.id, now)) {
       setShakeId(hint.id);
       window.setTimeout(() => setShakeId(""), 450);
       return;
@@ -219,7 +219,7 @@ export function DateDiscovery() {
       <div className="dx-boot">
         <div className="dx-cinema-card">
           <p className="dx-kicker">Date Discovery Puzzle</p>
-          <h2>Hold still.</h2>
+          <h2>Wait for it… 💕</h2>
         </div>
       </div>
     );
@@ -227,24 +227,41 @@ export function DateDiscovery() {
 
   return (
     <div className="dx-shell">
-      <p className="dx-kicker">A private evening · Bali time</p>
+      <div className="dx-floaters" aria-hidden="true">
+        {HEARTS.map((heart, index) => (
+          <span
+            key={index}
+            className="dx-floater"
+            style={{
+              left: heart.left,
+              top: heart.top,
+              animationDelay: heart.delay,
+              fontSize: heart.size,
+            }}
+          >
+            {heart.char}
+          </span>
+        ))}
+      </div>
+
+      <p className="dx-kicker">A cute little secret · Bali time</p>
       <h1 className="dx-title">Date Discovery Puzzle</h1>
       <p className="dx-lede">
-        Every morning at 6:00, one new piece can be turned. Choose carefully.
-        Once it is yours, it stays.
+        Each date is its own puzzle. Every morning at 6:00, every accepted date gets
+        one new piece. Tap the one you want. It stays yours forever.
       </p>
 
       <div className="dx-hud">
         <div>
-          <div className="dx-hud-label">The puzzle</div>
+          <div className="dx-hud-label">Pieces found</div>
           <div className="dx-hud-value">
-            {unlockedCount} / {total} pieces
+            {unlockedCount} / {total} 💕
           </div>
         </div>
-        <div className="dx-credit" data-ready={canUnlock ? "true" : "false"}>
-          {canUnlock
-            ? "1 unlock ready"
-            : `Next credit ${pad(nextParts.hours)}:${pad(nextParts.minutes)}:${pad(nextParts.seconds)}`}
+        <div className="dx-credit" data-ready={readyCredits > 0 ? "true" : "false"}>
+          {readyCredits > 0
+            ? `${readyCredits} unlock${readyCredits === 1 ? "" : "s"} ready ✨`
+            : `Next drop ${pad(nextParts.hours)}:${pad(nextParts.minutes)}:${pad(nextParts.seconds)}`}
         </div>
       </div>
 
@@ -256,36 +273,37 @@ export function DateDiscovery() {
           date={date}
           now={now}
           state={state}
-          canUnlock={canUnlock}
           shakeId={shakeId}
           onUnlock={tryUnlock}
         />
       ))}
 
       {view && !view.persisted ? (
-        <p className="dx-note">
-          Vault keys are not on this machine yet — progress is held in this session until
-          Supabase is connected.
-        </p>
+        <p className="dx-note">Saving on this visit until the cute vault is fully connected.</p>
       ) : null}
 
       {invite ? (
         <div className="dx-gate" role="dialog" aria-modal="true">
           <div className="dx-gate-card">
-            <p className="dx-kicker">An invitation</p>
+            <p className="dx-kicker">You&apos;re invited</p>
             <h2>{formatDateTitle(invite.startsAt)}</h2>
             <p>
-              {formatStartTime(invite.startsAt)} · Bali. Accept, and a new hint can be
-              turned each morning. Decline, and this evening stays sealed.
+              {formatStartTime(invite.startsAt)} · Bali. Say yes and this date becomes
+              a puzzle you get to unwrap, one flirty piece a day.
             </p>
             {confirmReject ? (
               <>
-                <p className="dx-confirm">If you decline, the hints stay sealed.</p>
+                <p className="dx-confirm">If you decline, the hints stay sealed forever.</p>
                 <div className="dx-actions">
-                  <button type="button" className="dx-btn-ghost dx-btn" onClick={() => setConfirmReject(false)}>
-                    Wait
+                  <button type="button" className="dx-btn" onClick={() => setConfirmReject(false)}>
+                    Wait, go back
                   </button>
-                  <button type="button" className="dx-btn" onClick={() => void decide("rejected")} disabled={busy}>
+                  <button
+                    type="button"
+                    className="dx-btn dx-btn-ghost"
+                    onClick={() => void decide("rejected")}
+                    disabled={busy}
+                  >
                     Decline anyway
                   </button>
                 </div>
@@ -293,7 +311,7 @@ export function DateDiscovery() {
             ) : (
               <div className="dx-actions">
                 <button type="button" className="dx-btn" onClick={() => void decide("accepted")} disabled={busy}>
-                  Accept
+                  Yes please 💕
                 </button>
                 <button
                   type="button"
@@ -301,7 +319,7 @@ export function DateDiscovery() {
                   onClick={() => setConfirmReject(true)}
                   disabled={busy}
                 >
-                  Decline
+                  Not this one
                 </button>
               </div>
             )}
@@ -311,23 +329,35 @@ export function DateDiscovery() {
 
       {cinema ? (
         <div className="dx-cinema" data-phase={cinema.phase}>
-          {cinema.phase === "reveal" ? <div className="dx-dust" aria-hidden="true" /> : null}
+          {cinema.phase === "reveal" ? (
+            <div className="dx-confetti" aria-hidden="true">
+              {Array.from({ length: 22 }, (_, index) => (
+                <span
+                  key={index}
+                  style={{
+                    left: `${(index * 17) % 100}%`,
+                    animationDelay: `${(index % 7) * 0.08}s`,
+                  }}
+                >
+                  {CONFETTI[index % CONFETTI.length]}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="dx-cinema-card">
             {cinema.phase !== "reveal" ? (
               <>
-                <div className="dx-cinema-lock">
-                  <LockIcon />
-                </div>
+                <div className="dx-cinema-lock">💖</div>
                 <p className="dx-kicker">
-                  {cinema.phase === "windup" ? "The seal is warming" : "Almost"}
+                  {cinema.phase === "windup" ? "Heart racing" : "It&apos;s opening"}
                 </p>
-                <h2>{cinema.phase === "windup" ? "Hold still." : "It gives."}</h2>
+                <h2>{cinema.phase === "windup" ? "Hold still…" : "Almost!!"}</h2>
               </>
             ) : (
               <>
                 <p className="dx-kicker">A piece of the evening</p>
-                <h2>Yours.</h2>
-                <div className="dx-date" style={{ marginTop: "1.2rem" }}>
+                <h2>OMG. Yours.</h2>
+                <div className="dx-date" style={{ marginTop: "1.1rem" }}>
                   <div className="dx-hint" data-locked="false" data-kind={cinema.hint.kind}>
                     <div className="dx-hint-body">
                       <HintFace hint={cinema.hint} />
@@ -347,14 +377,12 @@ function DateCard({
   date,
   now,
   state,
-  canUnlock,
   shakeId,
   onUnlock,
 }: {
   date: PuzzleDate;
   now: Date;
   state?: PuzzleState;
-  canUnlock: boolean;
   shakeId: string;
   onUnlock: (date: PuzzleDate, hint: Hint) => void;
 }) {
@@ -362,9 +390,15 @@ function DateCard({
   const start = new Date(date.startsAt);
   const left = remainingUntil(now, start);
   const unlockedHere = date.hints.filter((hint) => state?.unlockedHintIds.includes(hint.id)).length;
+  const canUnlock = state ? dateCreditAvailable(state, date.id, now) : false;
+  const nextParts = remainingUntil(now, nextCreditAt(now));
 
   return (
-    <article className="dx-date" data-declined={decision === "rejected" ? "true" : "false"}>
+    <article
+      className="dx-date"
+      data-declined={decision === "rejected" ? "true" : "false"}
+      data-ready={canUnlock ? "true" : "false"}
+    >
       <div className="dx-date-head">
         <div>
           <p className="dx-kicker">
@@ -376,14 +410,23 @@ function DateCard({
           </p>
           <h2 className="dx-date-title">{formatDateTitle(date.startsAt)}</h2>
         </div>
-        <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
+        <div style={{ textAlign: "right" }}>
+          <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
+          {decision === "accepted" ? (
+            <div
+              className="dx-credit"
+              data-ready={canUnlock ? "true" : "false"}
+              style={{ marginTop: "0.45rem" }}
+            >
+              {canUnlock
+                ? "1 hint ready 💕"
+                : `Next ${pad(nextParts.hours)}:${pad(nextParts.minutes)}`}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {left.done ? (
-        <p className="dx-now">It&apos;s time.</p>
-      ) : (
-        <Count remaining={left} />
-      )}
+      {left.done ? <p className="dx-now">It&apos;s time, baby.</p> : <Count remaining={left} />}
 
       {decision === "rejected" ? (
         <p className="dx-declined">The hints stay sealed. This evening was turned down.</p>
@@ -409,9 +452,8 @@ function DateCard({
                 </div>
                 {!unlocked ? (
                   <span className="dx-lock">
-                    <span className="dx-lock-mark">
-                      <LockIcon />
-                    </span>
+                    <span className="dx-lock-mark">🔒</span>
+                    {can ? <span className="dx-tap">tap me</span> : null}
                   </span>
                 ) : null}
               </button>
@@ -426,13 +468,13 @@ function DateCard({
 function humanError(code: string): string {
   switch (code) {
     case "no_credit":
-      return "Today’s piece is already spent. Come back at 6:00 AM Bali.";
+      return "This date already used today’s piece. Come back at 6:00 AM Bali.";
     case "already_unlocked":
       return "That piece is already yours.";
     case "not_accepted":
       return "That evening was not accepted.";
     case "table_missing":
-      return "The vault table is not created yet. Run the date_discovery_state migration in the new Supabase project.";
+      return "The vault table is not created yet.";
     case "store_failed":
       return "The vault could not be reached.";
     default:

@@ -17,7 +17,8 @@ export type PuzzleDate = {
 export type PuzzleState = {
   decisions: Record<string, DateDecision>;
   unlockedHintIds: string[];
-  lastUnlockDay: string | null;
+  /** Puzzle-day id of the last unlock, keyed by date id. Each date has its own daily credit. */
+  lastUnlockDays: Record<string, string>;
 };
 
 export type UnlockError =
@@ -83,7 +84,7 @@ export const DATES: PuzzleDate[] = [
 export const emptyState = (): PuzzleState => ({
   decisions: {},
   unlockedHintIds: [],
-  lastUnlockDay: null,
+  lastUnlockDays: {},
 });
 
 type ZoneParts = {
@@ -187,15 +188,25 @@ export function acceptedDates(state: PuzzleState, dates = DATES): PuzzleDate[] {
   return dates.filter((date) => state.decisions[date.id] === "accepted");
 }
 
-export function lockedHintsOnAccepted(state: PuzzleState, dates = DATES): Hint[] {
-  return acceptedDates(state, dates).flatMap((date) =>
-    date.hints.filter((hint) => !state.unlockedHintIds.includes(hint.id)),
-  );
+export function lockedHintsOnDate(state: PuzzleState, date: PuzzleDate): Hint[] {
+  return date.hints.filter((hint) => !state.unlockedHintIds.includes(hint.id));
 }
 
-export function creditAvailable(state: PuzzleState, now: Date, dates = DATES): boolean {
-  if (lockedHintsOnAccepted(state, dates).length === 0) return false;
-  return state.lastUnlockDay !== puzzleDayId(now);
+export function dateCreditAvailable(
+  state: PuzzleState,
+  dateId: string,
+  now: Date,
+  dates = DATES,
+): boolean {
+  const date = findDate(dateId, dates);
+  if (!date) return false;
+  if (state.decisions[dateId] !== "accepted") return false;
+  if (lockedHintsOnDate(state, date).length === 0) return false;
+  return (state.lastUnlockDays ?? {})[dateId] !== puzzleDayId(now);
+}
+
+export function readyCreditCount(state: PuzzleState, now: Date, dates = DATES): number {
+  return dates.filter((date) => dateCreditAvailable(state, date.id, now, dates)).length;
 }
 
 export function applyDecision(
@@ -229,7 +240,7 @@ export function applyUnlock(
   if (state.unlockedHintIds.includes(hintId)) {
     return { ok: false, error: "already_unlocked" };
   }
-  if (!creditAvailable(state, now, dates)) {
+  if (!dateCreditAvailable(state, found.date.id, now, dates)) {
     return { ok: false, error: "no_credit" };
   }
   return {
@@ -237,7 +248,10 @@ export function applyUnlock(
     state: {
       ...state,
       unlockedHintIds: [...state.unlockedHintIds, hintId],
-      lastUnlockDay: puzzleDayId(now),
+      lastUnlockDays: {
+        ...(state.lastUnlockDays ?? {}),
+        [found.date.id]: puzzleDayId(now),
+      },
     },
   };
 }
