@@ -5,13 +5,16 @@ import {
   applyUnlock,
   baliWallTime,
   creditAvailable,
+  dateCreditAvailable,
   emptyState,
   formatDateTitle,
   formatStartTime,
   pendingDate,
   puzzleDayId,
   nextCreditAt,
+  readyCreditCount,
   remainingUntil,
+  usesSharedDailyCredit,
   DATES,
 } from "./date-puzzle";
 
@@ -44,9 +47,19 @@ describe("nextCreditAt", () => {
   });
 });
 
-describe("RSVP and one shared daily credit", () => {
+function acceptBoth(now = baliWallTime(2026, 9, 3, 10)) {
+  const first = applyDecision(emptyState(), "2026-09-07", "accepted");
+  assert.equal(first.ok, true);
+  if (!first.ok) throw new Error("accept 1");
+  const both = applyDecision(first.state, "2026-09-09", "accepted");
+  assert.equal(both.ok, true);
+  if (!both.ok) throw new Error("accept 2");
+  return { now, state: both.state };
+}
+
+describe("RSVP and daily credits", () => {
   it("blocks hints until a date is accepted", () => {
-    const now = baliWallTime(2026, 9, 2, 10);
+    const now = baliWallTime(2026, 9, 3, 10);
     const state = emptyState();
     assert.equal(pendingDate(state)?.id, "2026-09-07");
     assert.equal(creditAvailable(state, now), false);
@@ -55,43 +68,94 @@ describe("RSVP and one shared daily credit", () => {
     if (!unlocked.ok) assert.equal(unlocked.error, "not_accepted");
   });
 
-  it("grants one shared unlock after accept, then refuses a second the same puzzle day", () => {
-    const now = baliWallTime(2026, 9, 2, 10);
-    const accepted = applyDecision(emptyState(), "2026-09-07", "accepted");
-    assert.equal(accepted.ok, true);
-    if (!accepted.ok) return;
-    assert.equal(creditAvailable(accepted.state, now), true);
+  it("before the cutover, each accepted date still gets its own daily unlock", () => {
+    const now = baliWallTime(2026, 9, 3, 10);
+    assert.equal(usesSharedDailyCredit(now), false);
+    const { state } = acceptBoth(now);
+    assert.equal(readyCreditCount(state, now), 2);
 
-    const first = applyUnlock(accepted.state, "d1-strawberry", now);
+    const first = applyUnlock(state, "d1-strawberry", now);
     assert.equal(first.ok, true);
     if (!first.ok) return;
-    assert.deepEqual(first.state.unlockedHintIds, ["d1-strawberry"]);
-    assert.equal(first.state.lastUnlockDay, "2026-09-02");
-    assert.equal(creditAvailable(first.state, now), false);
+    assert.equal(first.state.lastUnlockDays["2026-09-07"], "2026-09-03");
+    assert.equal(dateCreditAvailable(first.state, "2026-09-07", now), false);
+    assert.equal(dateCreditAvailable(first.state, "2026-09-09", now), true);
+    assert.equal(readyCreditCount(first.state, now), 1);
 
-    const second = applyUnlock(first.state, "d1-icecream", now);
+    const sameDate = applyUnlock(first.state, "d1-icecream", now);
+    assert.equal(sameDate.ok, false);
+    if (!sameDate.ok) assert.equal(sameDate.error, "no_credit");
+
+    const otherDate = applyUnlock(first.state, "d2-sunrise", now);
+    assert.equal(otherDate.ok, true);
+    if (!otherDate.ok) return;
+    assert.equal(readyCreditCount(otherDate.state, now), 0);
+  });
+
+  it("still uses per-date credits at 05:59 Bali on 4 Sep (end of the 3 Sep puzzle day)", () => {
+    const now = baliWallTime(2026, 9, 4, 5, 59, 0);
+    assert.equal(puzzleDayId(now), "2026-09-03");
+    assert.equal(usesSharedDailyCredit(now), false);
+    const { state } = acceptBoth(now);
+    const a = applyUnlock(state, "d1-strawberry", now);
+    assert.equal(a.ok, true);
+    if (!a.ok) return;
+    const b = applyUnlock(a.state, "d2-sunrise", now);
+    assert.equal(b.ok, true);
+  });
+
+  it("from 6:00 AM Bali on 4 Sep, one unlock is shared across every date", () => {
+    const now = baliWallTime(2026, 9, 4, 6, 0, 0);
+    assert.equal(usesSharedDailyCredit(now), true);
+    const { state } = acceptBoth(now);
+    assert.equal(readyCreditCount(state, now), 1);
+    assert.equal(creditAvailable(state, now), true);
+
+    const first = applyUnlock(state, "d2-sunrise", now);
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.equal(first.state.lastUnlockDay, "2026-09-04");
+    assert.equal(creditAvailable(first.state, now), false);
+    assert.equal(dateCreditAvailable(first.state, "2026-09-07", now), false);
+
+    const second = applyUnlock(first.state, "d1-strawberry", now);
     assert.equal(second.ok, false);
     if (!second.ok) assert.equal(second.error, "no_credit");
   });
 
-  it("lets her spend the one daily credit on either date, but not both", () => {
-    const now = baliWallTime(2026, 9, 2, 10);
-    const first = applyDecision(emptyState(), "2026-09-07", "accepted");
-    assert.equal(first.ok, true);
-    if (!first.ok) return;
-    const both = applyDecision(first.state, "2026-09-09", "accepted");
-    assert.equal(both.ok, true);
-    if (!both.ok) return;
-    assert.equal(creditAvailable(both.state, now), true);
-
-    const a = applyUnlock(both.state, "d2-sunrise", now);
+  it("grants a fresh shared credit at 6:00 AM even if both dates were unlocked yesterday", () => {
+    const yesterday = baliWallTime(2026, 9, 3, 10);
+    const { state } = acceptBoth(yesterday);
+    const a = applyUnlock(state, "d1-strawberry", yesterday);
     assert.equal(a.ok, true);
     if (!a.ok) return;
-    assert.equal(creditAvailable(a.state, now), false);
+    const b = applyUnlock(a.state, "d2-sunrise", yesterday);
+    assert.equal(b.ok, true);
+    if (!b.ok) return;
+    assert.equal(creditAvailable(b.state, yesterday), false);
 
-    const b = applyUnlock(a.state, "d1-strawberry", now);
-    assert.equal(b.ok, false);
-    if (!b.ok) assert.equal(b.error, "no_credit");
+    const morning = baliWallTime(2026, 9, 4, 6, 0, 0);
+    assert.equal(creditAvailable(b.state, morning), true);
+    const next = applyUnlock(b.state, "d1-icecream", morning);
+    assert.equal(next.ok, true);
+    if (!next.ok) return;
+    const extra = applyUnlock(next.state, "d2-compass", morning);
+    assert.equal(extra.ok, false);
+    if (!extra.ok) assert.equal(extra.error, "no_credit");
+  });
+
+  it("counts a persisted per-date lastUnlockDays entry for today as the shared credit", () => {
+    const now = baliWallTime(2026, 9, 4, 10);
+    const { state } = acceptBoth(now);
+    const persisted = {
+      ...state,
+      lastUnlockDay: null,
+      lastUnlockDays: { "2026-09-07": "2026-09-04" },
+    };
+    assert.equal(creditAvailable(persisted, now), false);
+    const extra = applyUnlock(persisted, "d2-sunrise", now);
+    assert.equal(extra.ok, false);
+    if (!extra.ok) assert.equal(extra.error, "no_credit");
   });
 
   it("does not stack unused days — only today's credit exists", () => {
@@ -107,7 +171,7 @@ describe("RSVP and one shared daily credit", () => {
   });
 
   it("rejects a declined date's hints forever", () => {
-    const now = baliWallTime(2026, 9, 2, 10);
+    const now = baliWallTime(2026, 9, 4, 10);
     const rejected = applyDecision(emptyState(), "2026-09-07", "rejected");
     assert.equal(rejected.ok, true);
     if (!rejected.ok) return;

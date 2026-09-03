@@ -6,7 +6,9 @@ import {
   emptyState,
   nextCreditAt,
   puzzleDayId,
+  readyCreditCount,
   STATE_EPOCH,
+  usesSharedDailyCredit,
   type DateDecision,
   type PuzzleState,
 } from "./date-puzzle";
@@ -61,12 +63,32 @@ function headers(key: string): HeadersInit {
   };
 }
 
+function dateKeysFromDays(raw: Record<string, string> | null | undefined): Record<string, string> {
+  const days: Record<string, string> = {};
+  if (!raw || typeof raw !== "object") return days;
+  for (const [key, value] of Object.entries(raw)) {
+    if (key === "epoch" || key === "global") continue;
+    if (typeof value === "string" && value) days[key] = value;
+  }
+  return days;
+}
+
+function latestDay(days: string[]): string | null {
+  let latest: string | null = null;
+  for (const day of days) {
+    if (!latest || day > latest) latest = day;
+  }
+  return latest;
+}
+
 function fromRow(row: DbRow): PuzzleState {
-  const day = row.last_unlock_day || row.last_unlock_days?.global || null;
+  const lastUnlockDays = dateKeysFromDays(row.last_unlock_days);
+  const storedGlobal = row.last_unlock_day || row.last_unlock_days?.global || "";
   return {
     decisions: row.decisions ?? {},
     unlockedHintIds: row.unlocked_hint_ids ?? [],
-    lastUnlockDay: day || null,
+    lastUnlockDay: storedGlobal || latestDay(Object.values(lastUnlockDays)),
+    lastUnlockDays,
     epoch: row.last_unlock_days?.epoch ?? "",
   };
 }
@@ -78,16 +100,23 @@ function encodeCookie(state: PuzzleState): string {
 function decodeCookie(raw: string): PuzzleState | null {
   try {
     const json = Buffer.from(raw, "base64url").toString("utf8");
-    const parsed = JSON.parse(json) as Partial<PuzzleState>;
+    const parsed = JSON.parse(json) as Partial<PuzzleState> & {
+      lastUnlockDays?: Record<string, string>;
+    };
     if (!parsed || typeof parsed !== "object") return null;
-    if (parsed.epoch !== STATE_EPOCH) return emptyState();
+    const lastUnlockDays = dateKeysFromDays(parsed.lastUnlockDays);
+    const lastUnlockDay =
+      typeof parsed.lastUnlockDay === "string" && parsed.lastUnlockDay
+        ? parsed.lastUnlockDay
+        : latestDay(Object.values(lastUnlockDays));
     return {
       decisions:
         parsed.decisions && typeof parsed.decisions === "object" ? parsed.decisions : {},
       unlockedHintIds: Array.isArray(parsed.unlockedHintIds)
         ? parsed.unlockedHintIds.filter((id): id is string => typeof id === "string")
         : [],
-      lastUnlockDay: typeof parsed.lastUnlockDay === "string" ? parsed.lastUnlockDay : null,
+      lastUnlockDay,
+      lastUnlockDays,
       epoch: STATE_EPOCH,
     };
   } catch {
@@ -162,6 +191,7 @@ function persistBody(state: PuzzleState) {
     unlocked_hint_ids: state.unlockedHintIds,
     last_unlock_day: state.lastUnlockDay,
     last_unlock_days: {
+      ...state.lastUnlockDays,
       epoch: state.epoch,
       global: state.lastUnlockDay ?? "",
     },
@@ -249,7 +279,8 @@ async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState)
     globalStore.__dateDiscoveryFallback = false;
     globalStore.__dateDiscoveryUsingCookie = false;
     if (current.epoch !== STATE_EPOCH) {
-      current = await writeRow(conf, emptyState());
+      // Stamp the epoch without wiping accepts or unlocks.
+      current = await writeRow(conf, { ...current, epoch: STATE_EPOCH });
     }
     return fn(conf, current);
   } catch (error) {
@@ -303,8 +334,10 @@ export function viewFor(state: PuzzleState, now = new Date()) {
   return {
     state,
     creditAvailable: creditAvailable(state, now),
+    readyCredits: readyCreditCount(state, now),
     puzzleDay: puzzleDayId(now),
     nextCreditAt: nextCreditAt(now).toISOString(),
+    sharedDailyCredit: usesSharedDailyCredit(now),
     /** Unlocks stick for this browser (vault and/or cookie). */
     persisted: vault || cookie,
     vault,
