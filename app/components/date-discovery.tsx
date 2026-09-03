@@ -280,8 +280,9 @@ export function DateDiscovery() {
           </>
         ) : (
           <>
-            Each date still has its own daily piece until 6:00 AM. After that you get{" "}
-            <em>one</em> unlock a day across every date — you choose where it goes.
+            Each date still has its own daily piece until 6:00 AM Thursday.
+            After that you get <em>one</em> unlock a day across every date —
+            you choose where it goes.
           </>
         )}
       </p>
@@ -328,8 +329,8 @@ export function DateDiscovery() {
             <h2>{formatDateTitle(invite.startsAt)}</h2>
             <p>
               {formatStartTime(invite.startsAt)} · Bali. Say yes and this date becomes
-              a puzzle. After 6:00 AM you get one flirty piece a day to spend on
-              whichever evening you like.
+              a puzzle. From Thursday 6:00 AM you get one flirty piece a day to spend
+              on whichever evening you like.
             </p>
             {confirmReject ? (
               <>
