@@ -251,8 +251,10 @@ describe("date instructions", () => {
     assert.ok(DATES[0]!.instructions);
     assert.equal(DATES[1]!.instructions, undefined);
     const parts = instructionParagraphs(DATES[0]!.instructions!);
-    assert.equal(parts[0], "Caitlyn, my love, the wait is over.");
+    assert.equal(parts[0], "Caitlyn, my love, the wait is finally over. Our disney movie starts tonight 😉");
     assert.ok(parts.some((part) => part.startsWith("NOTE:")));
+    assert.ok(parts.some((part) => part.includes("Shelter") && part.includes("Pererererererererererererererernan")));
+    assert.ok(parts.some((part) => part.includes("1. Be ready by 5pm")));
     assert.equal(parts.at(-1), "King/prince/master/daddy Nick");
   });
 });

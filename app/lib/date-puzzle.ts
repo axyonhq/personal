@@ -46,19 +46,31 @@ export type UnlockError =
 /** The instructions map unseals this long before the date starts. */
 export const INSTRUCTIONS_LEAD_MS = 86_400_000;
 
-const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is over.
+const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is finally over. Our disney movie starts tonight 😉
 
 The team wanted to congratulate you for being shortlisted for date, truly an astounding accomplishment.
 
 The instructions are simple:
 
-Be ready by 5pm. Daddy will arrive at your abode on his green charriot. Wear something classy & beautiful, so it matches your personality. Please be prepared for a bashful encounter, as daddy plans on bringing out your shy side.
+Be ready by 5pm. Daddy will arrive at your abode on his green charriot. Wear something classy & beautiful, so it matches your personality. Heels are welcome but not required. Recommended colours: black, white, or red.
+
+Please be prepared for a bashful encounter, as daddy plans on bringing out your shy side.
 
 Just incase he invites you over for a mean girls slumber party, he recommends packing some morning coffee-appopriate clothing.
+
+The evening will begin in the Daddy Batcave, for some pre-dinner get to know you activities. Such as 'pin the tail on the donkey', 'pass the parcel', and of course, 2-person duck duck goose.
+
+We will then proceed to our dinner date, at approximately 6:30pm. As you likely guessed, we will be attending a fine established located in the heart of Pererererererererererererererernan, called Shelter; providing a variety of cuisine & a wide array of cocktails.
 
 The next step: please disclose your AirBnb address to daddy via an encrypted WhatsApp message at your earliest possible convenience. This must be done before 3pm on Monday, or the date will be canceled.
 
 NOTE: if you are a good girl for the entirety of the date, you will likely be provided soft post-date care, as daddy understands you will have had a tiring day of travel.
+
+Here is a short summary so you can turn your brain off:
+
+1. Be ready by 5pm
+2. Wear something classy (red, white or black)
+3. Pack some morning coffee clothes
 
 Warm regards,
 

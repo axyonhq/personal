@@ -723,6 +723,7 @@ body:has(.discovery) ::selection {
   line-height: 1.55;
   font-weight: 700;
   text-wrap: pretty;
+  white-space: pre-line;
 }
 
 .dx-map-letter p:last-child {
@@ -738,6 +739,13 @@ body:has(.discovery) ::selection {
   background: color-mix(in srgb, #fff 55%, #ffd0e8);
   border: 2px solid #ffc2de;
   color: #9b2158;
+}
+
+.dx-map-letter p.dx-map-steps {
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, #fff 55%, #ffe7c8);
+  border: 2px dashed #f0c27a;
 }
 
 .dx-error,
