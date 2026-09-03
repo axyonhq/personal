@@ -386,11 +386,7 @@ export function DateDiscovery() {
       ) : null}
 
       {openMap?.instructions ? (
-        <InstructionsMap
-          date={openMap}
-          reduced={reduced.current}
-          onClose={() => setOpenMap(null)}
-        />
+        <InstructionsMap date={openMap} onClose={() => setOpenMap(null)} />
       ) : null}
 
       {cinema ? (
@@ -561,27 +557,25 @@ function DateCard({
 
 function InstructionsMap({
   date,
-  reduced,
   onClose,
 }: {
   date: PuzzleDate;
-  reduced: boolean;
   onClose: () => void;
 }) {
-  const [phase, setPhase] = useState<"seal" | "open">(reduced ? "open" : "seal");
+  const [phase, setPhase] = useState<"seal" | "open">("seal");
   const letter = instructionParagraphs(date.instructions ?? "");
 
   useEffect(() => {
-    if (reduced) {
-      playChime();
-      return;
-    }
-    const crack = window.setTimeout(() => {
-      playChime();
-      setPhase("open");
-    }, 1100);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const crack = window.setTimeout(
+      () => {
+        playChime();
+        setPhase("open");
+      },
+      reduced ? 0 : 1100,
+    );
     return () => window.clearTimeout(crack);
-  }, [reduced]);
+  }, []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
