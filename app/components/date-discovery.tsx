@@ -660,7 +660,13 @@ function InstructionsMap({
               {letter.map((paragraph, index) => (
                 <p
                   key={index}
-                  className={paragraph.startsWith("NOTE:") ? "dx-map-note" : undefined}
+                  className={
+                    paragraph.startsWith("NOTE:")
+                      ? "dx-map-note"
+                      : paragraph.startsWith("1.")
+                        ? "dx-map-steps"
+                        : undefined
+                  }
                 >
                   {paragraph}
                 </p>
