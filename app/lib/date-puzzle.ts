@@ -12,6 +12,8 @@ export type PuzzleDate = {
   id: string;
   startsAt: string;
   hints: Hint[];
+  /** Sealed until 24 hours before `startsAt`. Omitted dates hide the button. */
+  instructions?: string;
 };
 
 export type PuzzleState = {
@@ -41,10 +43,32 @@ export type UnlockError =
   | "unknown_date"
   | "already_decided";
 
+/** The instructions map unseals this long before the date starts. */
+export const INSTRUCTIONS_LEAD_MS = 86_400_000;
+
+const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is over.
+
+The team wanted to congratulate you for being shortlisted for date, truly an astounding accomplishment.
+
+The instructions are simple:
+
+Be ready by 5pm. Daddy will arrive at your abode on his green charriot. Wear something classy & beautiful, so it matches your personality. Please be prepared for a bashful encounter, as daddy plans on bringing out your shy side.
+
+Just incase he invites you over for a mean girls slumber party, he recommends packing some morning coffee-appopriate clothing.
+
+The next step: please disclose your AirBnb address to daddy via an encrypted WhatsApp message at your earliest possible convenience. This must be done before 3pm on Monday, or the date will be canceled.
+
+NOTE: if you are a good girl for the entirety of the date, you will likely be provided soft post-date care, as daddy understands you will have had a tiring day of travel.
+
+Warm regards,
+
+King/prince/master/daddy Nick`;
+
 export const DATES: PuzzleDate[] = [
   {
     id: "2026-09-07",
     startsAt: "2026-09-07T17:00:00+08:00",
+    instructions: MONDAY_INSTRUCTIONS,
     hints: [
       {
         id: "d1-locations",
@@ -362,6 +386,28 @@ export function remainingUntil(now: Date, target: Date): Remaining {
   const minutes = Math.floor((ms % 3_600_000) / 60_000);
   const seconds = Math.floor((ms % 60_000) / 1000);
   return { days, hours, minutes, seconds, done: now.getTime() >= target.getTime() };
+}
+
+export function instructionsUnlockAt(startsAt: string): Date {
+  return new Date(new Date(startsAt).getTime() - INSTRUCTIONS_LEAD_MS);
+}
+
+/** True once we are inside the 24-hour window (and the date was not declined). */
+export function instructionsUnlocked(
+  startsAt: string,
+  now: Date,
+  decision?: DateDecision,
+): boolean {
+  if (decision === "rejected") return false;
+  return now.getTime() >= instructionsUnlockAt(startsAt).getTime();
+}
+
+export function instructionParagraphs(text: string): string[] {
+  return text
+    .trim()
+    .split(/\n\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 export function allHints(dates = DATES): Hint[] {

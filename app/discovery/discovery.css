@@ -36,6 +36,10 @@ body:has(.discovery) ::selection {
   overflow-x: hidden;
 }
 
+.discovery button {
+  cursor: pointer;
+}
+
 .dx-floaters {
   pointer-events: none;
   position: fixed;
@@ -172,10 +176,16 @@ body:has(.discovery) ::selection {
 
 .dx-date-head {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+}
+
+.dx-date-headline {
+  display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.8rem;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
 }
 
 .dx-date-title {
@@ -187,9 +197,73 @@ body:has(.discovery) ::selection {
 }
 
 .dx-date-meta {
+  margin-left: auto;
   color: var(--dx-muted);
   font-size: 0.95rem;
   font-weight: 700;
+}
+
+.dx-instr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 2.05rem;
+  padding: 0.18rem 0.7rem 0.18rem 0.38rem;
+  border-radius: 999px;
+  border: 2px solid #ffc2de;
+  background: #fff;
+  color: var(--dx-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  box-shadow: 0 8px 16px rgba(255, 79, 154, 0.1);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dx-instr-mark {
+  width: 1.45rem;
+  height: 1.45rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff, #ffd3e8);
+  border: 1.5px solid #fff;
+  box-shadow: 0 4px 10px rgba(255, 79, 154, 0.16);
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.dx-instr[data-locked="true"] {
+  cursor: pointer;
+}
+
+.dx-instr[data-locked="false"] {
+  color: #fff;
+  background: linear-gradient(135deg, #ff4f9a, #ff8a4c);
+  border-color: transparent;
+  animation: dx-pulse 1.15s ease-in-out infinite;
+  box-shadow: 0 10px 22px rgba(255, 79, 154, 0.32);
+}
+
+.dx-instr[data-locked="false"] .dx-instr-mark {
+  background: #fff;
+}
+
+.dx-instr[data-locked="false"]:hover {
+  transform: translateY(-1px) scale(1.04);
+}
+
+.dx-instr[data-shake="true"] {
+  animation: dx-shake 420ms ease;
+}
+
+.dx-instr-nudge {
+  margin-top: 0.15rem;
+  color: var(--dx-pink);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .dx-count {
@@ -377,7 +451,8 @@ body:has(.discovery) ::selection {
 
 .dx-gate,
 .dx-cinema,
-.dx-boot {
+.dx-boot,
+.dx-map {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -388,6 +463,14 @@ body:has(.discovery) ::selection {
     radial-gradient(700px 420px at 50% 20%, rgba(255, 192, 220, 0.9), transparent 60%),
     color-mix(in srgb, #ffb7d8 55%, #fff8 70%);
   backdrop-filter: blur(16px);
+}
+
+.dx-map {
+  z-index: 24;
+  background:
+    radial-gradient(720px 460px at 50% 12%, rgba(255, 214, 160, 0.55), transparent 58%),
+    radial-gradient(640px 420px at 80% 90%, rgba(255, 170, 210, 0.45), transparent 55%),
+    color-mix(in srgb, #f3d5a8 42%, #fff8 70%);
 }
 
 .dx-gate-card,
@@ -495,6 +578,168 @@ body:has(.discovery) ::selection {
   font-size: 1.2rem;
 }
 
+.dx-map-scroll {
+  position: relative;
+  width: min(34rem, 100%);
+  max-height: min(90dvh, 52rem);
+  overflow: auto;
+  text-align: center;
+  padding: 2.35rem 1.2rem 1.45rem;
+  border-radius: 1.6rem;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.75), transparent 42%),
+    repeating-linear-gradient(
+      -18deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 79, 154, 0.035) 10px,
+      rgba(255, 79, 154, 0.035) 11px
+    ),
+    linear-gradient(180deg, #fff8ec 0%, #ffe7c8 48%, #ffd9b6 100%);
+  border: 3px solid #f0c27a;
+  box-shadow:
+    0 30px 70px rgba(140, 70, 30, 0.22),
+    inset 0 0 90px rgba(255, 120, 160, 0.1);
+  animation: dx-unfurl 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dx-map-scroll[data-phase="seal"] {
+  text-align: center;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.dx-map-scroll h2 {
+  margin-top: 0.35rem;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 7vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  color: #c23d78;
+}
+
+.dx-map-seal {
+  width: 5.6rem;
+  height: 5.6rem;
+  margin: 0 auto 0.85rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 28%, #ff8ab4, #c81e5b 62%, #8d1440);
+  color: #fff;
+  font-size: 2rem;
+  box-shadow:
+    0 10px 0 #8b153f,
+    0 18px 30px rgba(200, 30, 91, 0.35);
+  animation: dx-beat 0.7s ease-in-out infinite;
+}
+
+.dx-map[data-phase="open"] .dx-map-seal {
+  animation: dx-crack 0.65s ease both;
+}
+
+.dx-map-whisper {
+  margin: 0.8rem auto 0;
+  max-width: 22rem;
+  color: color-mix(in srgb, var(--dx-ink) 72%, white);
+  font-weight: 700;
+}
+
+.dx-map-compass {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.75rem;
+  font-size: 1.45rem;
+  animation: dx-float 6s ease-in-out infinite;
+}
+
+.dx-map-close {
+  position: absolute;
+  top: 0.65rem;
+  left: 0.7rem;
+  z-index: 2;
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid #f0c27a;
+  background: #fff8ec;
+  color: #c23d78;
+  font-size: 0.85rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dx-map-trail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  margin: 0.15rem 0 0.7rem;
+  font-size: 1.05rem;
+}
+
+.dx-map-dots {
+  width: 1.6rem;
+  height: 0;
+  border-top: 2px dashed #e8a15c;
+}
+
+.dx-map-x {
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: #ff4f9a;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 6px 12px rgba(255, 79, 154, 0.28);
+}
+
+.dx-map-when {
+  margin: 0.45rem 0 0;
+  color: #c06b9a;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.dx-map-letter {
+  margin: 1.05rem 0 1.2rem;
+  text-align: left;
+  padding: 1rem 1rem 0.85rem;
+  border-radius: 1.15rem;
+  background: color-mix(in srgb, #fff 72%, #ffe0c2);
+  border: 2px dashed #f0c27a;
+}
+
+.dx-map-letter p {
+  margin: 0 0 0.85rem;
+  color: color-mix(in srgb, var(--dx-ink) 88%, #7a3a20);
+  font-size: 0.98rem;
+  line-height: 1.55;
+  font-weight: 700;
+  text-wrap: pretty;
+}
+
+.dx-map-letter p:last-child {
+  margin-bottom: 0;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: #c23d78;
+}
+
+.dx-map-letter p.dx-map-note {
+  padding: 0.7rem 0.75rem;
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, #fff 55%, #ffd0e8);
+  border: 2px solid #ffc2de;
+  color: #9b2158;
+}
+
 .dx-error,
 .dx-note {
   margin-top: 1rem;
@@ -594,10 +839,29 @@ body:has(.discovery) ::selection {
   }
 }
 
+@keyframes dx-unfurl {
+  from {
+    opacity: 0;
+    transform: scale(0.86) rotate(-2.5deg) translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (max-width: 620px) {
   .dx-hud {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .dx-date-meta {
+    margin-left: 0;
+  }
+
+  .dx-instr {
+    font-size: 0.64rem;
   }
 }
 
@@ -608,7 +872,11 @@ body:has(.discovery) ::selection {
   .dx-hint,
   .dx-cinema-lock,
   .dx-gate-card,
-  .dx-floater {
+  .dx-floater,
+  .dx-instr,
+  .dx-map-scroll,
+  .dx-map-seal,
+  .dx-map-compass {
     animation: none;
   }
 }
