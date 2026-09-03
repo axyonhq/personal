@@ -9,6 +9,9 @@ import {
   emptyState,
   formatDateTitle,
   formatStartTime,
+  instructionParagraphs,
+  instructionsUnlockAt,
+  instructionsUnlocked,
   pendingDate,
   puzzleDayId,
   nextCreditAt,
@@ -210,5 +213,46 @@ describe("remainingUntil", () => {
     const after = remainingUntil(new Date(target.getTime() + 1000), target);
     assert.equal(after.done, true);
     assert.equal(after.days + after.hours + after.minutes + after.seconds, 0);
+  });
+});
+
+describe("date instructions", () => {
+  it("unseals Monday 7 Sep 5pm at 5pm the day before", () => {
+    const unlockAt = instructionsUnlockAt(DATES[0]!.startsAt);
+    assert.equal(formatDateTitle(unlockAt.toISOString()), "Sunday, 6th September");
+    assert.equal(formatStartTime(unlockAt.toISOString()), "5:00 PM");
+    assert.equal(unlockAt.toISOString(), baliWallTime(2026, 9, 6, 17).toISOString());
+  });
+
+  it("stays sealed until the exact 24-hour mark", () => {
+    const startsAt = DATES[0]!.startsAt;
+    const justBefore = new Date(baliWallTime(2026, 9, 6, 17).getTime() - 1);
+    const exactly = baliWallTime(2026, 9, 6, 17);
+    const afterStart = baliWallTime(2026, 9, 7, 17, 1);
+    assert.equal(instructionsUnlocked(startsAt, justBefore), false);
+    assert.equal(instructionsUnlocked(startsAt, exactly), true);
+    assert.equal(instructionsUnlocked(startsAt, afterStart), true);
+  });
+
+  it("unseals Wednesday noon at Tuesday noon", () => {
+    const unlockAt = instructionsUnlockAt(DATES[1]!.startsAt);
+    assert.equal(unlockAt.toISOString(), baliWallTime(2026, 9, 8, 12).toISOString());
+    assert.equal(instructionsUnlocked(DATES[1]!.startsAt, baliWallTime(2026, 9, 8, 11, 59)), false);
+    assert.equal(instructionsUnlocked(DATES[1]!.startsAt, baliWallTime(2026, 9, 8, 12)), true);
+  });
+
+  it("never unseals a declined date", () => {
+    const duringWindow = baliWallTime(2026, 9, 6, 18);
+    assert.equal(instructionsUnlocked(DATES[0]!.startsAt, duringWindow, "rejected"), false);
+    assert.equal(instructionsUnlocked(DATES[0]!.startsAt, duringWindow, "accepted"), true);
+  });
+
+  it("keeps Monday's letter as paragraphs, including the sign-off", () => {
+    assert.ok(DATES[0]!.instructions);
+    assert.equal(DATES[1]!.instructions, undefined);
+    const parts = instructionParagraphs(DATES[0]!.instructions!);
+    assert.equal(parts[0], "Caitlyn, my love, the wait is over.");
+    assert.ok(parts.some((part) => part.startsWith("NOTE:")));
+    assert.equal(parts.at(-1), "King/prince/master/daddy Nick");
   });
 });

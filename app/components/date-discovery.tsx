@@ -7,6 +7,9 @@ import {
   dateCreditAvailable,
   formatDateTitle,
   formatStartTime,
+  instructionParagraphs,
+  instructionsUnlockAt,
+  instructionsUnlocked,
   nextCreditAt,
   pendingDate,
   readyCreditCount,
@@ -49,6 +52,7 @@ const HEARTS = [
 ];
 
 const CONFETTI = ["💕", "✨", "🌸", "💖", "🎀", "⭐", "💘", "🩷"];
+const MAP_CONFETTI = ["🗺️", "💌", "💖", "✨", "🧭", "👑", "🎀", "💕", "⭐", "🌸"];
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -127,6 +131,8 @@ export function DateDiscovery() {
   const [confirmReject, setConfirmReject] = useState(false);
   const [cinema, setCinema] = useState<Cinema | null>(null);
   const [shakeId, setShakeId] = useState("");
+  const [openMap, setOpenMap] = useState<PuzzleDate | null>(null);
+  const [instrShakeId, setInstrShakeId] = useState("");
   const reduced = useRef(false);
 
   useEffect(() => {
@@ -311,6 +317,17 @@ export function DateDiscovery() {
           state={state}
           shakeId={shakeId}
           onUnlock={tryUnlock}
+          instrShake={instrShakeId === date.id}
+          onOpenInstructions={() => {
+            if (!date.instructions) return;
+            const decision = state?.decisions[date.id];
+            if (!instructionsUnlocked(date.startsAt, now, decision)) {
+              setInstrShakeId(date.id);
+              window.setTimeout(() => setInstrShakeId(""), 450);
+              return;
+            }
+            setOpenMap(date);
+          }}
         />
       ))}
 
@@ -368,6 +385,10 @@ export function DateDiscovery() {
         </div>
       ) : null}
 
+      {openMap?.instructions ? (
+        <InstructionsMap date={openMap} onClose={() => setOpenMap(null)} />
+      ) : null}
+
       {cinema ? (
         <div className="dx-cinema" data-phase={cinema.phase}>
           {cinema.phase === "reveal" ? (
@@ -419,19 +440,26 @@ function DateCard({
   now,
   state,
   shakeId,
+  instrShake,
   onUnlock,
+  onOpenInstructions,
 }: {
   date: PuzzleDate;
   now: Date;
   state?: PuzzleState;
   shakeId: string;
+  instrShake: boolean;
   onUnlock: (date: PuzzleDate, hint: Hint) => void;
+  onOpenInstructions: () => void;
 }) {
   const decision = state?.decisions[date.id];
   const start = new Date(date.startsAt);
   const left = remainingUntil(now, start);
   const unlockedHere = date.hints.filter((hint) => state?.unlockedHintIds.includes(hint.id)).length;
   const canUnlock = state ? dateCreditAvailable(state, date.id, now) : false;
+  const mapReady =
+    Boolean(date.instructions) && instructionsUnlocked(date.startsAt, now, decision);
+  const mapUnlockAt = date.instructions ? instructionsUnlockAt(date.startsAt) : null;
 
   return (
     <article
@@ -440,17 +468,52 @@ function DateCard({
       data-ready={canUnlock ? "true" : "false"}
     >
       <div className="dx-date-head">
-        <div>
-          <p className="dx-kicker">
-            {decision === "accepted"
-              ? `${unlockedHere} / ${date.hints.length} unlocked`
-              : decision === "rejected"
-                ? "Declined"
-                : "Pending"}
-          </p>
+        <p className="dx-kicker">
+          {decision === "accepted"
+            ? `${unlockedHere} / ${date.hints.length} unlocked`
+            : decision === "rejected"
+              ? "Declined"
+              : "Pending"}
+        </p>
+        <div className="dx-date-headline">
           <h2 className="dx-date-title">{formatDateTitle(date.startsAt)}</h2>
+          {date.instructions && mapUnlockAt ? (
+            <button
+              type="button"
+              className="dx-instr"
+              data-locked={mapReady ? "false" : "true"}
+              data-shake={instrShake ? "true" : "false"}
+              onClick={onOpenInstructions}
+              aria-haspopup={mapReady ? "dialog" : undefined}
+              aria-disabled={mapReady ? undefined : true}
+              aria-label={
+                mapReady
+                  ? "Open date instructions"
+                  : decision === "rejected"
+                    ? "Date instructions locked. This evening was declined."
+                    : `Date instructions locked. Unlocks ${formatDateTitle(mapUnlockAt.toISOString())} at ${formatStartTime(mapUnlockAt.toISOString())}`
+              }
+              title={
+                mapReady
+                  ? "Open your date instructions"
+                  : `Sealed until ${formatDateTitle(mapUnlockAt.toISOString())} · ${formatStartTime(mapUnlockAt.toISOString())}`
+              }
+            >
+              <span className="dx-instr-mark" aria-hidden="true">
+                {mapReady ? "🗺️" : "🔒"}
+              </span>
+              Date Instructions
+            </button>
+          ) : null}
+          <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
         </div>
-        <p className="dx-date-meta">{formatStartTime(date.startsAt)} · Bali</p>
+        {instrShake && mapUnlockAt ? (
+          <p className="dx-instr-nudge">
+            {decision === "rejected"
+              ? "This evening was turned down — the map stays sealed."
+              : `Sealed until ${formatDateTitle(mapUnlockAt.toISOString())} · ${formatStartTime(mapUnlockAt.toISOString())}`}
+          </p>
+        ) : null}
       </div>
 
       {left.done ? <p className="dx-now">It&apos;s time, baby.</p> : <Count remaining={left} />}
@@ -489,6 +552,127 @@ function DateCard({
         </div>
       )}
     </article>
+  );
+}
+
+function InstructionsMap({
+  date,
+  onClose,
+}: {
+  date: PuzzleDate;
+  onClose: () => void;
+}) {
+  const [phase, setPhase] = useState<"seal" | "open">("seal");
+  const letter = instructionParagraphs(date.instructions ?? "");
+
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const crack = window.setTimeout(
+      () => {
+        playChime();
+        setPhase("open");
+      },
+      reduced ? 0 : 1100,
+    );
+    return () => window.clearTimeout(crack);
+  }, []);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && phase === "open") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose, phase]);
+
+  return (
+    <div
+      className="dx-map"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dx-map-title"
+      data-phase={phase}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && phase === "open") onClose();
+      }}
+    >
+      {phase === "open" ? (
+        <div className="dx-confetti" aria-hidden="true">
+          {Array.from({ length: 26 }, (_, index) => (
+            <span
+              key={index}
+              style={{
+                left: `${(index * 19) % 100}%`,
+                animationDelay: `${(index % 8) * 0.07}s`,
+              }}
+            >
+              {MAP_CONFETTI[index % MAP_CONFETTI.length]}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="dx-map-scroll" data-phase={phase}>
+        {phase !== "open" ? (
+          <>
+            <div className="dx-map-seal" aria-hidden="true">
+              <span>💌</span>
+            </div>
+            <p className="dx-kicker">A sealed dispatch</p>
+            <h2>The wax is warming</h2>
+            <p className="dx-map-whisper">Your map is almost yours, my love.</p>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="dx-map-close"
+              onClick={onClose}
+              aria-label="Close date instructions"
+            >
+              ✕
+            </button>
+            <div className="dx-map-compass" aria-hidden="true">
+              🧭
+            </div>
+            <div className="dx-map-trail" aria-hidden="true">
+              <span>✨</span>
+              <span className="dx-map-dots" />
+              <span>💌</span>
+              <span className="dx-map-dots" />
+              <span>🗺️</span>
+              <span className="dx-map-dots" />
+              <span>💖</span>
+              <span className="dx-map-dots" />
+              <span className="dx-map-x">✕</span>
+            </div>
+            <p className="dx-kicker">X marks the evening</p>
+            <h2 id="dx-map-title">Date Instructions</h2>
+            <p className="dx-map-when">
+              {formatDateTitle(date.startsAt)} · {formatStartTime(date.startsAt)} · Bali
+            </p>
+            <div className="dx-map-letter">
+              {letter.map((paragraph, index) => (
+                <p
+                  key={index}
+                  className={paragraph.startsWith("NOTE:") ? "dx-map-note" : undefined}
+                >
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+            <button type="button" className="dx-btn" onClick={onClose}>
+              Seal it back 💌
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
