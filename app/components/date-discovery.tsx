@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DATES,
   allHints,
-  creditAvailable,
+  dateCreditAvailable,
   formatDateTitle,
   formatStartTime,
   nextCreditAt,
   pendingDate,
+  readyCreditCount,
   remainingUntil,
+  usesSharedDailyCredit,
   type Hint,
   type PuzzleDate,
   type PuzzleState,
@@ -23,6 +25,7 @@ type View = {
   creditAvailable: boolean;
   readyCredits?: number;
   nextCreditAt: string;
+  sharedDailyCredit?: boolean;
   persisted: boolean;
   vault?: boolean;
 };
@@ -166,7 +169,8 @@ export function DateDiscovery() {
   const invite = state ? pendingDate(state) : null;
   const nextAt = useMemo(() => nextCreditAt(now), [now]);
   const nextParts = remainingUntil(now, nextAt);
-  const canUnlock = state ? creditAvailable(state, now) : Boolean(view?.creditAvailable);
+  const shared = usesSharedDailyCredit(now);
+  const readyCredits = state ? readyCreditCount(state, now) : (view?.readyCredits ?? 0);
   const unlockedCount = state?.unlockedHintIds.length ?? 0;
   const total = allHints().length;
 
@@ -210,7 +214,7 @@ export function DateDiscovery() {
       window.setTimeout(() => setShakeId(""), 450);
       return;
     }
-    if (!creditAvailable(state, now)) {
+    if (!dateCreditAvailable(state, date.id, now)) {
       setError("no_credit");
       setShakeId(hint.id);
       window.setTimeout(() => setShakeId(""), 450);
@@ -268,8 +272,18 @@ export function DateDiscovery() {
       <p className="dx-kicker">A cute little secret · Bali time</p>
       <h1 className="dx-title">Date Discovery Puzzle</h1>
       <p className="dx-lede">
-        Each date is its own little puzzle. Every morning at 6:00 you get{" "}
-        <em>one</em> unlock — spend it on whichever piece you want.
+        {shared ? (
+          <>
+            Each date is its own little puzzle. Every morning at 6:00 you get{" "}
+            <em>one</em> unlock for the whole board — spend it on whichever piece you
+            want.
+          </>
+        ) : (
+          <>
+            Each date still has its own daily piece until 6:00 AM. After that you get{" "}
+            <em>one</em> unlock a day across every date — you choose where it goes.
+          </>
+        )}
       </p>
 
       <div className="dx-hud">
@@ -279,9 +293,9 @@ export function DateDiscovery() {
             {unlockedCount} / {total} 💕
           </div>
         </div>
-        <div className="dx-credit" data-ready={canUnlock ? "true" : "false"}>
-          {canUnlock
-            ? "1 unlock ready ✨"
+        <div className="dx-credit" data-ready={readyCredits > 0 ? "true" : "false"}>
+          {readyCredits > 0
+            ? `${readyCredits} unlock${readyCredits === 1 ? "" : "s"} ready ✨`
             : `Next drop ${pad(nextParts.hours)}:${pad(nextParts.minutes)}:${pad(nextParts.seconds)}`}
         </div>
       </div>
@@ -294,7 +308,6 @@ export function DateDiscovery() {
           date={date}
           now={now}
           state={state}
-          canUnlock={canUnlock}
           shakeId={shakeId}
           onUnlock={tryUnlock}
         />
@@ -315,7 +328,8 @@ export function DateDiscovery() {
             <h2>{formatDateTitle(invite.startsAt)}</h2>
             <p>
               {formatStartTime(invite.startsAt)} · Bali. Say yes and this date becomes
-              a puzzle. You get one flirty piece a day to spend anywhere you like.
+              a puzzle. After 6:00 AM you get one flirty piece a day to spend on
+              whichever evening you like.
             </p>
             {confirmReject ? (
               <>
@@ -403,14 +417,12 @@ function DateCard({
   date,
   now,
   state,
-  canUnlock,
   shakeId,
   onUnlock,
 }: {
   date: PuzzleDate;
   now: Date;
   state?: PuzzleState;
-  canUnlock: boolean;
   shakeId: string;
   onUnlock: (date: PuzzleDate, hint: Hint) => void;
 }) {
@@ -418,13 +430,13 @@ function DateCard({
   const start = new Date(date.startsAt);
   const left = remainingUntil(now, start);
   const unlockedHere = date.hints.filter((hint) => state?.unlockedHintIds.includes(hint.id)).length;
-  const dateCanUnlock = Boolean(decision === "accepted" && canUnlock);
+  const canUnlock = state ? dateCreditAvailable(state, date.id, now) : false;
 
   return (
     <article
       className="dx-date"
       data-declined={decision === "rejected" ? "true" : "false"}
-      data-ready={dateCanUnlock ? "true" : "false"}
+      data-ready={canUnlock ? "true" : "false"}
     >
       <div className="dx-date-head">
         <div>
@@ -448,7 +460,7 @@ function DateCard({
         <div className="dx-hints">
           {date.hints.map((hint) => {
             const unlocked = Boolean(state?.unlockedHintIds.includes(hint.id));
-            const can = decision === "accepted" && !unlocked && dateCanUnlock;
+            const can = decision === "accepted" && !unlocked && canUnlock;
             return (
               <button
                 key={hint.id}

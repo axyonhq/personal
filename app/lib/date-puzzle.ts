@@ -19,11 +19,19 @@ export type PuzzleState = {
   unlockedHintIds: string[];
   /** Bali puzzle-day id of the last unlock, shared across every date. */
   lastUnlockDay: string | null;
+  /** Puzzle-day id of the last unlock, keyed by date id. Used until the shared-credit cutover. */
+  lastUnlockDays: Record<string, string>;
   epoch: string;
 };
 
 /** Bump this to wipe accepts and unlocks on the next load. */
 export const STATE_EPOCH = "v3-one-daily-credit";
+
+/**
+ * First Bali puzzle day (06:00→06:00) with one unlock credit for the whole board.
+ * Until then each accepted date still has its own daily piece.
+ */
+export const SHARED_CREDIT_START_DAY = "2026-09-04";
 
 export type UnlockError =
   | "unknown_hint"
@@ -89,6 +97,7 @@ export const emptyState = (): PuzzleState => ({
   decisions: {},
   unlockedHintIds: [],
   lastUnlockDay: null,
+  lastUnlockDays: {},
   epoch: STATE_EPOCH,
 });
 
@@ -201,10 +210,48 @@ export function lockedHintsOnAccepted(state: PuzzleState, dates = DATES): Hint[]
   return acceptedDates(state, dates).flatMap((date) => lockedHintsOnDate(state, date));
 }
 
-/** One shared unlock credit per Bali day, spendable on any accepted date. */
+export function usesSharedDailyCredit(now: Date, timeZone = BALI_TIME_ZONE): boolean {
+  return puzzleDayId(now, timeZone) >= SHARED_CREDIT_START_DAY;
+}
+
+function spentPuzzleDays(state: PuzzleState): string[] {
+  const days: string[] = [];
+  if (state.lastUnlockDay) days.push(state.lastUnlockDay);
+  for (const value of Object.values(state.lastUnlockDays ?? {})) {
+    if (value) days.push(value);
+  }
+  return days;
+}
+
+/** Whether today's shared (or, before the cutover, per-date) credit is still unspent on this date. */
+export function dateCreditAvailable(
+  state: PuzzleState,
+  dateId: string,
+  now: Date,
+  dates = DATES,
+): boolean {
+  const date = findDate(dateId, dates);
+  if (!date) return false;
+  if (state.decisions[dateId] !== "accepted") return false;
+  if (lockedHintsOnDate(state, date).length === 0) return false;
+  const day = puzzleDayId(now);
+  if (day >= SHARED_CREDIT_START_DAY) {
+    return !spentPuzzleDays(state).includes(day);
+  }
+  return (state.lastUnlockDays ?? {})[dateId] !== day;
+}
+
+export function readyCreditCount(state: PuzzleState, now: Date, dates = DATES): number {
+  if (lockedHintsOnAccepted(state, dates).length === 0) return 0;
+  if (usesSharedDailyCredit(now)) {
+    return spentPuzzleDays(state).includes(puzzleDayId(now)) ? 0 : 1;
+  }
+  return dates.filter((date) => dateCreditAvailable(state, date.id, now, dates)).length;
+}
+
+/** True when at least one accepted date can still spend today's credit. */
 export function creditAvailable(state: PuzzleState, now: Date, dates = DATES): boolean {
-  if (lockedHintsOnAccepted(state, dates).length === 0) return false;
-  return state.lastUnlockDay !== puzzleDayId(now);
+  return readyCreditCount(state, now, dates) > 0;
 }
 
 export function applyDecision(
@@ -238,15 +285,20 @@ export function applyUnlock(
   if (state.unlockedHintIds.includes(hintId)) {
     return { ok: false, error: "already_unlocked" };
   }
-  if (!creditAvailable(state, now, dates)) {
+  if (!dateCreditAvailable(state, found.date.id, now, dates)) {
     return { ok: false, error: "no_credit" };
   }
+  const day = puzzleDayId(now);
   return {
     ok: true,
     state: {
       ...state,
       unlockedHintIds: [...state.unlockedHintIds, hintId],
-      lastUnlockDay: puzzleDayId(now),
+      lastUnlockDay: day,
+      lastUnlockDays: {
+        ...(state.lastUnlockDays ?? {}),
+        [found.date.id]: day,
+      },
     },
   };
 }
