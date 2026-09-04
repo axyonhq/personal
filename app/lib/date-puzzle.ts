@@ -48,17 +48,17 @@ export const INSTRUCTIONS_LEAD_MS = 86_400_000;
 
 const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is over.
 
-The team wanted to congratulate you for being shortlisted for date, truly an astounding accomplishment.
+However, these instructions are not as they initally appear...
 
-The instructions are simple:
+I predict you are feeling an alchemised emotional potion of excitement, frustration, and anticipation.
 
-Be ready by 5pm. Daddy will arrive at your abode on his green charriot. Wear something classy & beautiful, so it matches your personality. Please be prepared for a bashful encounter, as daddy plans on bringing out your shy side.
+And after my stalling for 4 lines of text, this is the moment in which you realise... I'm not giving you your instructions... yet.
 
-Just incase he invites you over for a mean girls slumber party, he recommends packing some morning coffee-appopriate clothing.
+Hate me now, love me tonight.
 
-The next step: please disclose your AirBnb address to daddy via an encrypted WhatsApp message at your earliest possible convenience. This must be done before 3pm on Monday, or the date will be canceled.
+You will get your date instructions at the airport.
 
-NOTE: if you are a good girl for the entirety of the date, you will likely be provided soft post-date care, as daddy understands you will have had a tiring day of travel.
+Daddy is excited to see you.
 
 Warm regards,
 
