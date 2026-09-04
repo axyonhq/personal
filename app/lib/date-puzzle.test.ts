@@ -252,7 +252,11 @@ describe("date instructions", () => {
     assert.equal(DATES[1]!.instructions, undefined);
     const parts = instructionParagraphs(DATES[0]!.instructions!);
     assert.equal(parts[0], "Caitlyn, my love, the wait is over.");
-    assert.ok(parts.some((part) => part.startsWith("NOTE:")));
+    assert.ok(
+      parts.some((part) =>
+        part.includes("You will get your date instructions at the airport."),
+      ),
+    );
     assert.equal(parts.at(-1), "King/prince/master/daddy Nick");
   });
 });
