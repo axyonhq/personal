@@ -11,7 +11,9 @@ import {
   formatStartTime,
   instructionParagraphs,
   instructionsUnlockAt,
+  instructionsUnlockTimeZone,
   instructionsUnlocked,
+  MELBOURNE_TIME_ZONE,
   pendingDate,
   puzzleDayId,
   nextCreditAt,
@@ -217,37 +219,42 @@ describe("remainingUntil", () => {
 });
 
 describe("date instructions", () => {
-  it("unseals Monday 7 Sep 5pm at 5pm the day before", () => {
-    const unlockAt = instructionsUnlockAt(DATES[0]!.startsAt);
-    assert.equal(formatDateTitle(unlockAt.toISOString()), "Sunday, 6th September");
-    assert.equal(formatStartTime(unlockAt.toISOString()), "5:00 PM");
-    assert.equal(unlockAt.toISOString(), baliWallTime(2026, 9, 6, 17).toISOString());
+  it("unseals Monday at 5pm Melbourne on Sunday", () => {
+    const monday = DATES[0]!;
+    const unlockAt = instructionsUnlockAt(monday);
+    assert.equal(instructionsUnlockTimeZone(monday), MELBOURNE_TIME_ZONE);
+    assert.equal(
+      formatDateTitle(unlockAt.toISOString(), MELBOURNE_TIME_ZONE),
+      "Sunday, 6th September",
+    );
+    assert.equal(formatStartTime(unlockAt.toISOString(), MELBOURNE_TIME_ZONE), "5:00 PM");
+    assert.equal(unlockAt.toISOString(), "2026-09-06T07:00:00.000Z");
   });
 
-  it("stays sealed until the exact 24-hour mark", () => {
-    const startsAt = DATES[0]!.startsAt;
-    const justBefore = new Date(baliWallTime(2026, 9, 6, 17).getTime() - 1);
-    const exactly = baliWallTime(2026, 9, 6, 17);
+  it("stays sealed until the exact Melbourne unlock mark", () => {
+    const monday = DATES[0]!;
+    const exactly = new Date(monday.instructionsUnlockAt!);
+    const justBefore = new Date(exactly.getTime() - 1);
     const afterStart = baliWallTime(2026, 9, 7, 17, 1);
-    assert.equal(instructionsUnlocked(startsAt, justBefore), false);
-    assert.equal(instructionsUnlocked(startsAt, exactly), true);
-    assert.equal(instructionsUnlocked(startsAt, afterStart), true);
+    assert.equal(instructionsUnlocked(monday, justBefore), false);
+    assert.equal(instructionsUnlocked(monday, exactly), true);
+    assert.equal(instructionsUnlocked(monday, afterStart), true);
   });
 
-  it("unseals Wednesday noon at Tuesday noon", () => {
-    const unlockAt = instructionsUnlockAt(DATES[1]!.startsAt);
+  it("defaults to a 24-hour lead when no explicit unlock is set", () => {
+    const unlockAt = instructionsUnlockAt(DATES[1]!);
     assert.equal(unlockAt.toISOString(), baliWallTime(2026, 9, 8, 12).toISOString());
-    assert.equal(instructionsUnlocked(DATES[1]!.startsAt, baliWallTime(2026, 9, 8, 11, 59)), false);
-    assert.equal(instructionsUnlocked(DATES[1]!.startsAt, baliWallTime(2026, 9, 8, 12)), true);
+    assert.equal(instructionsUnlocked(DATES[1]!, baliWallTime(2026, 9, 8, 11, 59)), false);
+    assert.equal(instructionsUnlocked(DATES[1]!, baliWallTime(2026, 9, 8, 12)), true);
   });
 
   it("never unseals a declined date", () => {
-    const duringWindow = baliWallTime(2026, 9, 6, 18);
-    assert.equal(instructionsUnlocked(DATES[0]!.startsAt, duringWindow, "rejected"), false);
-    assert.equal(instructionsUnlocked(DATES[0]!.startsAt, duringWindow, "accepted"), true);
+    const duringWindow = new Date("2026-09-06T17:30:00+10:00");
+    assert.equal(instructionsUnlocked(DATES[0]!, duringWindow, "rejected"), false);
+    assert.equal(instructionsUnlocked(DATES[0]!, duringWindow, "accepted"), true);
   });
 
-  it("keeps Monday's letter as paragraphs, including the sign-off", () => {
+  it("keeps Monday's letter as paragraphs, including the task", () => {
     assert.ok(DATES[0]!.instructions);
     assert.equal(DATES[1]!.instructions, undefined);
     const parts = instructionParagraphs(DATES[0]!.instructions!);
@@ -257,6 +264,6 @@ describe("date instructions", () => {
         part.includes("You will get your date instructions at the airport."),
       ),
     );
-    assert.equal(parts.at(-1), "King/prince/master/daddy Nick");
+    assert.equal(parts.at(-1), "Your task: send Daddy your airbnb address by 8pm tonight.");
   });
 });
