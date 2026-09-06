@@ -9,6 +9,7 @@ import {
   formatStartTime,
   instructionParagraphs,
   instructionsUnlockAt,
+  instructionsUnlockTimeZone,
   instructionsUnlocked,
   nextCreditAt,
   pendingDate,
@@ -321,7 +322,7 @@ export function DateDiscovery() {
           onOpenInstructions={() => {
             if (!date.instructions) return;
             const decision = state?.decisions[date.id];
-            if (!instructionsUnlocked(date.startsAt, now, decision)) {
+            if (!instructionsUnlocked(date, now, decision)) {
               setInstrShakeId(date.id);
               window.setTimeout(() => setInstrShakeId(""), 450);
               return;
@@ -458,8 +459,12 @@ function DateCard({
   const unlockedHere = date.hints.filter((hint) => state?.unlockedHintIds.includes(hint.id)).length;
   const canUnlock = state ? dateCreditAvailable(state, date.id, now) : false;
   const mapReady =
-    Boolean(date.instructions) && instructionsUnlocked(date.startsAt, now, decision);
-  const mapUnlockAt = date.instructions ? instructionsUnlockAt(date.startsAt) : null;
+    Boolean(date.instructions) && instructionsUnlocked(date, now, decision);
+  const mapUnlockAt = date.instructions ? instructionsUnlockAt(date) : null;
+  const unlockZone = instructionsUnlockTimeZone(date);
+  const unlockLabel = mapUnlockAt
+    ? `${formatDateTitle(mapUnlockAt.toISOString(), unlockZone)} · ${formatStartTime(mapUnlockAt.toISOString(), unlockZone)}`
+    : "";
 
   return (
     <article
@@ -491,12 +496,12 @@ function DateCard({
                   ? "Open date instructions"
                   : decision === "rejected"
                     ? "Date instructions locked. This evening was declined."
-                    : `Date instructions locked. Unlocks ${formatDateTitle(mapUnlockAt.toISOString())} at ${formatStartTime(mapUnlockAt.toISOString())}`
+                    : `Date instructions locked. Unlocks ${unlockLabel}`
               }
               title={
                 mapReady
                   ? "Open your date instructions"
-                  : `Sealed until ${formatDateTitle(mapUnlockAt.toISOString())} · ${formatStartTime(mapUnlockAt.toISOString())}`
+                  : `Sealed until ${unlockLabel}`
               }
             >
               <span className="dx-instr-mark" aria-hidden="true">
@@ -511,7 +516,7 @@ function DateCard({
           <p className="dx-instr-nudge">
             {decision === "rejected"
               ? "This evening was turned down — the map stays sealed."
-              : `Sealed until ${formatDateTitle(mapUnlockAt.toISOString())} · ${formatStartTime(mapUnlockAt.toISOString())}`}
+              : `Sealed until ${unlockLabel}`}
           </p>
         ) : null}
       </div>

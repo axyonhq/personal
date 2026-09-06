@@ -1,4 +1,5 @@
 export const BALI_TIME_ZONE = "Asia/Makassar";
+export const MELBOURNE_TIME_ZONE = "Australia/Melbourne";
 export const UNLOCK_HOUR = 6;
 
 export type DateDecision = "accepted" | "rejected";
@@ -12,8 +13,10 @@ export type PuzzleDate = {
   id: string;
   startsAt: string;
   hints: Hint[];
-  /** Sealed until 24 hours before `startsAt`. Omitted dates hide the button. */
+  /** Sealed until 24 hours before `startsAt`, unless `instructionsUnlockAt` is set. Omitted dates hide the button. */
   instructions?: string;
+  /** Absolute unlock instant for date instructions (ISO). Overrides the default lead time. */
+  instructionsUnlockAt?: string;
 };
 
 export type PuzzleState = {
@@ -48,27 +51,27 @@ export const INSTRUCTIONS_LEAD_MS = 86_400_000;
 
 const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is over.
 
-However, these instructions are not as they initally appear...
+However, these instructions are not as they may initally appear...
 
-I predict you are feeling an alchemised emotional potion of excitement, frustration, and anticipation.
+I predict you are feeling an alchemised emotional hurricane of excitement, frustration, and anticipation.
 
-And after my stalling for 4 lines of text, this is the moment in which you realise... I'm not giving you your instructions... yet.
+And after my stalling for 4 lines of text, this is the moment in shall dawn upon you... I'm not giving you your instructions... yet.
 
-Hate me now, love me tonight.
+Hate me now, fall for me tomorrow.
 
 You will get your date instructions at the airport.
 
-Daddy is excited to see you.
+I am excited to see you.
 
-Warm regards,
-
-King/prince/master/daddy Nick`;
+Your task: send Daddy your airbnb address by 8pm tonight.`;
 
 export const DATES: PuzzleDate[] = [
   {
     id: "2026-09-07",
     startsAt: "2026-09-07T17:00:00+08:00",
     instructions: MONDAY_INSTRUCTIONS,
+    /** Sunday 6 Sep 5:00 PM Melbourne (AEST). */
+    instructionsUnlockAt: "2026-09-06T17:00:00+10:00",
     hints: [
       {
         id: "d1-locations",
@@ -388,18 +391,33 @@ export function remainingUntil(now: Date, target: Date): Remaining {
   return { days, hours, minutes, seconds, done: now.getTime() >= target.getTime() };
 }
 
-export function instructionsUnlockAt(startsAt: string): Date {
-  return new Date(new Date(startsAt).getTime() - INSTRUCTIONS_LEAD_MS);
+export function instructionsUnlockAt(
+  date: Pick<PuzzleDate, "startsAt" | "instructionsUnlockAt"> | string,
+): Date {
+  if (typeof date === "string") {
+    return new Date(new Date(date).getTime() - INSTRUCTIONS_LEAD_MS);
+  }
+  if (date.instructionsUnlockAt) {
+    return new Date(date.instructionsUnlockAt);
+  }
+  return new Date(new Date(date.startsAt).getTime() - INSTRUCTIONS_LEAD_MS);
 }
 
-/** True once we are inside the 24-hour window (and the date was not declined). */
+/** Time zone used when formatting a date's sealed-instructions unlock clock. */
+export function instructionsUnlockTimeZone(
+  date: Pick<PuzzleDate, "instructionsUnlockAt">,
+): string {
+  return date.instructionsUnlockAt ? MELBOURNE_TIME_ZONE : BALI_TIME_ZONE;
+}
+
+/** True once we are inside the instructions window (and the date was not declined). */
 export function instructionsUnlocked(
-  startsAt: string,
+  date: Pick<PuzzleDate, "startsAt" | "instructionsUnlockAt"> | string,
   now: Date,
   decision?: DateDecision,
 ): boolean {
   if (decision === "rejected") return false;
-  return now.getTime() >= instructionsUnlockAt(startsAt).getTime();
+  return now.getTime() >= instructionsUnlockAt(date).getTime();
 }
 
 export function instructionParagraphs(text: string): string[] {
