@@ -24,11 +24,11 @@ type DbRow = {
 
 type StoreConfig = { url: string; key: string };
 
-const COOKIE_NAME = "dx_puzzle_v3";
+const COOKIE_NAME = "dx_puzzle_v4";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
 
 const globalStore = globalThis as typeof globalThis & {
-  __dateDiscoveryMemoryV3?: PuzzleState;
+  __dateDiscoveryMemoryV4?: PuzzleState;
   __dateDiscoveryFallback?: boolean;
   __dateDiscoveryUsingCookie?: boolean;
 };
@@ -45,12 +45,12 @@ export function discoveryConfigured(): boolean {
 }
 
 function memoryState(): PuzzleState {
-  globalStore.__dateDiscoveryMemoryV3 ??= emptyState();
-  return globalStore.__dateDiscoveryMemoryV3;
+  globalStore.__dateDiscoveryMemoryV4 ??= emptyState();
+  return globalStore.__dateDiscoveryMemoryV4;
 }
 
 function setMemory(state: PuzzleState): PuzzleState {
-  globalStore.__dateDiscoveryMemoryV3 = state;
+  globalStore.__dateDiscoveryMemoryV4 = state;
   return state;
 }
 
@@ -104,6 +104,7 @@ function decodeCookie(raw: string): PuzzleState | null {
       lastUnlockDays?: Record<string, string>;
     };
     if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.epoch !== STATE_EPOCH) return emptyState();
     const lastUnlockDays = dateKeysFromDays(parsed.lastUnlockDays);
     const lastUnlockDay =
       typeof parsed.lastUnlockDay === "string" && parsed.lastUnlockDay
@@ -279,8 +280,8 @@ async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState)
     globalStore.__dateDiscoveryFallback = false;
     globalStore.__dateDiscoveryUsingCookie = false;
     if (current.epoch !== STATE_EPOCH) {
-      // Stamp the epoch without wiping accepts or unlocks.
-      current = await writeRow(conf, { ...current, epoch: STATE_EPOCH });
+      // New board epoch — wipe accepts and unlocks so the invite gate returns.
+      current = await writeRow(conf, emptyState());
     }
     return fn(conf, current);
   } catch (error) {

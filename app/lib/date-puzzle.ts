@@ -30,7 +30,7 @@ export type PuzzleState = {
 };
 
 /** Bump this to wipe accepts and unlocks on the next load. */
-export const STATE_EPOCH = "v3-one-daily-credit";
+export const STATE_EPOCH = "v4-saturday-19";
 
 /**
  * First Bali puzzle day (06:00→06:00) with one unlock credit for the whole board.
@@ -49,72 +49,33 @@ export type UnlockError =
 /** The instructions map unseals this long before the date starts. */
 export const INSTRUCTIONS_LEAD_MS = 86_400_000;
 
-const MONDAY_INSTRUCTIONS = `Caitlyn, my love, the wait is over.
-
-However, these instructions are not as they may initally appear...
-
-I predict you are feeling an alchemised emotional hurricane of excitement, frustration, and anticipation.
-
-And after my stalling for 4 lines of text, this is the moment in shall dawn upon you... I'm not giving you your instructions... yet.
-
-Hate me now, fall for me tomorrow.
-
-You will get your date instructions at the airport.
-
-I am excited to see you.
-
-Your task: send Daddy your airbnb address by 8pm tonight.`;
-
 export const DATES: PuzzleDate[] = [
   {
-    id: "2026-09-07",
-    startsAt: "2026-09-07T17:00:00+08:00",
-    instructions: MONDAY_INSTRUCTIONS,
-    /** Sunday 6 Sep 5:00 PM Melbourne (AEST). */
-    instructionsUnlockAt: "2026-09-06T17:00:00+10:00",
+    id: "2026-09-19",
+    startsAt: "2026-09-19T17:30:00+08:00",
     hints: [
       {
-        id: "d1-locations",
+        id: "d3-pisa",
+        kind: "image",
+        src: "/discovery/pisa-not-yet.png",
+        alt: "The Leaning Tower of Pisa with the message: no we are not going here... yet",
+      },
+      {
+        id: "d3-compass",
+        kind: "image",
+        src: "/discovery/compass-east-20km.png",
+        alt: "A cartoon compass pointing east with a banner that says 20km",
+      },
+      {
+        id: "d3-gelato",
+        kind: "image",
+        src: "/discovery/gelato-cup.png",
+        alt: "A cup of gelato",
+      },
+      {
+        id: "d3-cipher",
         kind: "text",
-        text: "Three locations. One of them at the start of the evening — and again at the end.",
-      },
-      { id: "d1-strawberry", kind: "emoji", emoji: "🍓", label: "A strawberry." },
-      { id: "d1-icecream", kind: "emoji", emoji: "🍦", label: "Ice cream." },
-      {
-        id: "d1-shelter",
-        kind: "image",
-        src: "/discovery/shelter-couple.png",
-        alt: "Two people standing close under a shelter",
-      },
-    ],
-  },
-  {
-    id: "2026-09-09",
-    startsAt: "2026-09-09T12:00:00+08:00",
-    hints: [
-      {
-        id: "d2-sunrise",
-        kind: "image",
-        src: "/discovery/sunrise.png",
-        alt: "A spectacular sunrise",
-      },
-      {
-        id: "d2-compass",
-        kind: "image",
-        src: "/discovery/compass-north.png",
-        alt: "A compass with a red needle pointing straight up at NORTH",
-      },
-      {
-        id: "d2-helmet",
-        kind: "image",
-        src: "/discovery/pink-helmet.png",
-        alt: "A pink helmet",
-      },
-      {
-        id: "d2-trip",
-        kind: "image",
-        src: "/discovery/tripping.png",
-        alt: "Someone tripping over",
+        text: "13-1-19-19-9-13-15",
       },
     ],
   },

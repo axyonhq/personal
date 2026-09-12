@@ -94,11 +94,6 @@ function HintFace({ hint }: { hint: Hint }) {
     return (
       <span className="dx-hint-image">
         <img src={hint.src} alt={hint.alt} />
-        {hint.id === "d2-compass" ? (
-          <span className="dx-north-tag" aria-hidden="true">
-            ↑ NORTH
-          </span>
-        ) : null}
       </span>
     );
   }
@@ -129,7 +124,6 @@ export function DateDiscovery() {
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
-  const [confirmReject, setConfirmReject] = useState(false);
   const [cinema, setCinema] = useState<Cinema | null>(null);
   const [shakeId, setShakeId] = useState("");
   const [openMap, setOpenMap] = useState<PuzzleDate | null>(null);
@@ -181,12 +175,11 @@ export function DateDiscovery() {
   const unlockedCount = state?.unlockedHintIds.length ?? 0;
   const total = allHints().length;
 
-  async function decide(decision: "accepted" | "rejected") {
+  async function acceptInvite() {
     if (!invite || busy) return;
     setBusy(true);
     try {
-      await post({ action: "decide", dateId: invite.id, decision });
-      setConfirmReject(false);
+      await post({ action: "decide", dateId: invite.id, decision: "accepted" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save that.");
     } finally {
@@ -281,9 +274,8 @@ export function DateDiscovery() {
       <p className="dx-lede">
         {shared ? (
           <>
-            Each date is its own little puzzle. Every morning at 6:00 you get{" "}
-            <em>one</em> unlock for the whole board — spend it on whichever piece you
-            want.
+            Every morning at 6:00 you get <em>one</em> unlock — spend it on whichever
+            sealed piece you want.
           </>
         ) : (
           <>
@@ -346,42 +338,19 @@ export function DateDiscovery() {
             <p className="dx-kicker">You&apos;re invited</p>
             <h2>{formatDateTitle(invite.startsAt)}</h2>
             <p>
-              {formatStartTime(invite.startsAt)} · Bali. Say yes and this date becomes
-              a puzzle. From Thursday 6:00 AM you get one flirty piece a day to spend
-              on whichever evening you like.
+              {formatStartTime(invite.startsAt)} · Bali. Say yes and this evening becomes
+              a puzzle — one flirty unlock each morning at 6:00.
             </p>
-            {confirmReject ? (
-              <>
-                <p className="dx-confirm">If you decline, the hints stay sealed forever.</p>
-                <div className="dx-actions">
-                  <button type="button" className="dx-btn" onClick={() => setConfirmReject(false)}>
-                    Wait, go back
-                  </button>
-                  <button
-                    type="button"
-                    className="dx-btn dx-btn-ghost"
-                    onClick={() => void decide("rejected")}
-                    disabled={busy}
-                  >
-                    Decline anyway
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="dx-actions">
-                <button type="button" className="dx-btn" onClick={() => void decide("accepted")} disabled={busy}>
-                  Yes please 💕
-                </button>
-                <button
-                  type="button"
-                  className="dx-btn dx-btn-ghost"
-                  onClick={() => setConfirmReject(true)}
-                  disabled={busy}
-                >
-                  Not this one
-                </button>
-              </div>
-            )}
+            <div className="dx-actions">
+              <button
+                type="button"
+                className="dx-btn"
+                onClick={() => void acceptInvite()}
+                disabled={busy}
+              >
+                Yes please 💕
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
