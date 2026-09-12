@@ -137,8 +137,18 @@ export function DateDiscovery() {
   }, []);
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/discovery", { cache: "no-store" });
-    const data = (await response.json()) as View;
+    let response: Response;
+    try {
+      response = await fetch("/api/discovery", { cache: "no-store" });
+    } catch (err) {
+      throw new Error(err instanceof Error && err.message ? err.message : "fetch_failed");
+    }
+    let data: View;
+    try {
+      data = (await response.json()) as View;
+    } catch {
+      throw new Error(response.ok ? "load_failed" : "store_failed");
+    }
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "load_failed");
     }
@@ -153,12 +163,22 @@ export function DateDiscovery() {
   }, [refresh]);
 
   const post = useCallback(async (body: Record<string, string>) => {
-    const response = await fetch("/api/discovery", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = (await response.json()) as View;
+    let response: Response;
+    try {
+      response = await fetch("/api/discovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      throw new Error(err instanceof Error && err.message ? err.message : "fetch_failed");
+    }
+    let data: View;
+    try {
+      data = (await response.json()) as View;
+    } catch {
+      throw new Error(response.ok ? "save_failed" : "store_failed");
+    }
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "save_failed");
     }
@@ -301,6 +321,26 @@ export function DateDiscovery() {
       </div>
 
       {error ? <p className="dx-error">{humanError(error)}</p> : null}
+
+      {!view && error ? (
+        <div className="dx-actions" style={{ marginBottom: "1.25rem" }}>
+          <button
+            type="button"
+            className="dx-btn"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              refresh()
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : "Could not open the vault.");
+                })
+                .finally(() => setBusy(false));
+            }}
+          >
+            Try again 💕
+          </button>
+        </div>
+      ) : null}
 
       {DATES.map((date) => (
         <DateCard
@@ -651,7 +691,8 @@ function InstructionsMap({
 }
 
 function humanError(code: string): string {
-  switch (code) {
+  const normalized = code.trim().toLowerCase().replaceAll(" ", "_");
+  switch (normalized) {
     case "no_credit":
       return "Today’s piece is already spent. Come back at 6:00 AM Bali.";
     case "already_unlocked":
@@ -661,7 +702,11 @@ function humanError(code: string): string {
     case "table_missing":
       return "The vault table is not created yet.";
     case "store_failed":
-      return "The vault could not be reached.";
+    case "load_failed":
+    case "save_failed":
+    case "fetch_failed":
+    case "failed_to_fetch":
+      return "Could not reach the puzzle vault. Tap try again in a moment.";
     default:
       return code.replaceAll("_", " ");
   }

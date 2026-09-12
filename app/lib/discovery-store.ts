@@ -12,6 +12,9 @@ import {
   type DateDecision,
   type PuzzleState,
 } from "./date-puzzle";
+import { isVaultUnreachable } from "./discovery-vault";
+
+export { isVaultUnreachable } from "./discovery-vault";
 
 type DbRow = {
   id: string;
@@ -158,11 +161,17 @@ async function rest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<{ ok: boolean; status: number; data: T | null; error: string }> {
-  const response = await fetch(`${conf.url}/rest/v1/${path}`, {
-    ...init,
-    headers: { ...headers(conf.key), ...(init?.headers ?? {}) },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${conf.url}/rest/v1/${path}`, {
+      ...init,
+      headers: { ...headers(conf.key), ...(init?.headers ?? {}) },
+      cache: "no-store",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "fetch_failed";
+    return { ok: false, status: 0, data: null, error: message || "fetch_failed" };
+  }
   const text = await response.text();
   let data: T | null = null;
   if (text) {
@@ -268,6 +277,19 @@ async function writeLocal(state: PuzzleState): Promise<PuzzleState> {
   return writeCookieState(state);
 }
 
+async function persistState(conf: StoreConfig | null, state: PuzzleState): Promise<PuzzleState> {
+  if (!conf) return writeLocal(state);
+  try {
+    const saved = await writeRow(conf, state);
+    globalStore.__dateDiscoveryFallback = false;
+    return saved;
+  } catch (error) {
+    console.error("discovery_vault_write_fallback", error);
+    globalStore.__dateDiscoveryFallback = true;
+    return writeLocal(state);
+  }
+}
+
 async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState) => Promise<T>): Promise<T> {
   const conf = config();
   if (!conf) {
@@ -281,11 +303,15 @@ async function withStore<T>(fn: (conf: StoreConfig | null, current: PuzzleState)
     globalStore.__dateDiscoveryUsingCookie = false;
     if (current.epoch !== STATE_EPOCH) {
       // New board epoch — wipe accepts and unlocks so the invite gate returns.
-      current = await writeRow(conf, emptyState());
+      current = await persistState(conf, emptyState());
+      if (globalStore.__dateDiscoveryFallback) {
+        return fn(null, current);
+      }
     }
     return fn(conf, current);
   } catch (error) {
-    if (error instanceof Error && error.message === "table_missing") {
+    if (isVaultUnreachable(error)) {
+      console.error("discovery_vault_read_fallback", error);
       globalStore.__dateDiscoveryFallback = true;
       globalStore.__dateDiscoveryUsingCookie = false;
       return fn(null, await readLocal());
@@ -299,10 +325,7 @@ export async function loadPuzzleState(): Promise<PuzzleState> {
 }
 
 export async function resetPuzzleState(): Promise<PuzzleState> {
-  return withStore(async (conf) => {
-    const fresh = emptyState();
-    return conf ? writeRow(conf, fresh) : writeLocal(fresh);
-  });
+  return withStore(async (conf) => persistState(conf, emptyState()));
 }
 
 export async function decideDate(dateId: string, decision: DateDecision): Promise<PuzzleState> {
@@ -313,7 +336,7 @@ export async function decideDate(dateId: string, decision: DateDecision): Promis
       error.name = next.error;
       throw error;
     }
-    return conf ? writeRow(conf, next.state) : writeLocal(next.state);
+    return persistState(conf, next.state);
   });
 }
 
@@ -325,7 +348,7 @@ export async function unlockHint(hintId: string, now = new Date()): Promise<Puzz
       error.name = next.error;
       throw error;
     }
-    return conf ? writeRow(conf, next.state) : writeLocal(next.state);
+    return persistState(conf, next.state);
   });
 }
 
