@@ -18,7 +18,7 @@ set
   decisions = '{}'::jsonb,
   unlocked_hint_ids = '{}'::text[],
   last_unlock_day = null,
-  last_unlock_days = '{"epoch":"v3-one-daily-credit","global":""}'::jsonb,
+  last_unlock_days = '{"epoch":"v4-saturday-19","global":""}'::jsonb,
   updated_at = now()
 where id = 'singleton';
 
